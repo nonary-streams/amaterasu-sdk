@@ -1,0 +1,23 @@
+[package]
+name = "amaterasu-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+amaterasu-abi.workspace = true
+serde.workspace = true
+
+# The host monotonic clock (see src/clock.rs). libc and windows-sys are
+# already in the workspace lock.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Performance"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
