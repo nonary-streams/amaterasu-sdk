@@ -138,10 +138,12 @@ pub struct StreamComposition {
 }
 
 impl StreamComposition {
-    pub fn insert(
+    /// Validate identity and capacity before constructing an owning pipeline.
+    /// Rejected admission never creates a native resource owner.
+    pub fn insert_with(
         &mut self,
         config: StreamConfig,
-        pipeline: Box<dyn StreamPipeline>,
+        create: impl FnOnce() -> Box<dyn StreamPipeline>,
     ) -> Result<(), CompositionError> {
         config.validate()?;
         if self.legs.contains_key(&config.id) {
@@ -154,7 +156,7 @@ impl StreamComposition {
             config.id,
             Leg {
                 config,
-                pipeline,
+                pipeline: create(),
                 pending: None,
                 state: StreamState::Running,
             },
@@ -230,6 +232,30 @@ impl StreamComposition {
         Ok(())
     }
 
+    /// Attempt every close; failed legs remain owned here for an exact retry.
+    /// A caller must not unload native provider code while the returned list
+    /// is nonempty.
+    pub fn try_shutdown(&mut self) -> Vec<StreamId> {
+        let ids: Vec<_> = self.legs.keys().copied().collect();
+        ids.into_iter()
+            .filter(|id| self.stop(*id).is_err())
+            .collect()
+    }
+
+    /// Transfer any unconfirmed owners to a longer-lived recovery coordinator
+    /// without invoking Drop's best-effort close. The receiver is responsible
+    /// for exact broker reconciliation and retaining provider code as needed.
+    pub fn into_owned(mut self) -> Vec<OwnedPipeline> {
+        std::mem::take(&mut self.legs)
+            .into_values()
+            .map(|leg| OwnedPipeline {
+                config: leg.config,
+                state: leg.state,
+                pipeline: leg.pipeline,
+            })
+            .collect()
+    }
+
     pub fn len(&self) -> usize {
         self.legs.len()
     }
@@ -239,11 +265,16 @@ impl StreamComposition {
     }
 }
 
+pub struct OwnedPipeline {
+    pub config: StreamConfig,
+    pub state: StreamState,
+    pub pipeline: Box<dyn StreamPipeline>,
+}
+
 impl Drop for StreamComposition {
     fn drop(&mut self) {
-        // This is only best effort. The host must settle uncertain native
-        // cleanup before unloading provider code; it may not infer success
-        // from this destructor.
+        // This is only best effort, never a shutdown barrier. Callers that
+        // cannot confirm stop must use into_owned and retain native providers.
         for leg in self.legs.values_mut() {
             let _ = leg.pipeline.stop();
         }
@@ -336,10 +367,10 @@ mod tests {
         let first = StreamId::new(1).unwrap();
         let second = StreamId::new(2).unwrap();
         composition
-            .insert(config(1, "output-a", 7), source(1, &trace))
+            .insert_with(config(1, "output-a", 7), || source(1, &trace))
             .unwrap();
         composition
-            .insert(config(2, "output-b", 19), source(2, &trace))
+            .insert_with(config(2, "output-b", 19), || source(2, &trace))
             .unwrap();
         let mut sink = Sink {
             busy_once: Some(first),
@@ -381,18 +412,17 @@ mod tests {
         let first = StreamId::new(1).unwrap();
         let second = StreamId::new(2).unwrap();
         composition
-            .insert(
-                config(1, "a", 1),
+            .insert_with(config(1, "a", 1), || {
                 Box::new(Source {
                     route: 1,
                     next: 0,
                     attempts: trace.clone(),
                     close_fail_once: true,
-                }),
-            )
+                })
+            })
             .unwrap();
         composition
-            .insert(config(2, "b", 2), source(2, &trace))
+            .insert_with(config(2, "b", 2), || source(2, &trace))
             .unwrap();
         let mut sink = Sink {
             uncertain: Some(first),
@@ -423,24 +453,64 @@ mod tests {
         assert_eq!(StreamId::new(0), Err(CompositionError::InvalidIdentity));
         for id in 1..=4 {
             composition
-                .insert(config(id, "output", id as u64), source(id as u8, &trace))
+                .insert_with(config(id, "output", id as u64), || source(id as u8, &trace))
                 .unwrap();
         }
+        let mut rejected_created = false;
         assert_eq!(
-            composition.insert(config(1, "output", 99), source(1, &trace)),
+            composition.insert_with(config(1, "output", 99), || {
+                rejected_created = true;
+                source(1, &trace)
+            }),
             Err(CompositionError::DuplicateStream)
         );
+        assert!(!rejected_created);
         assert_eq!(
-            composition.insert(config(5, "output", 5), source(5, &trace)),
+            composition.insert_with(config(5, "output", 5), || source(5, &trace)),
             Err(CompositionError::StreamLimit)
         );
         let mut config = config(6, "bad\nroute", 0);
         composition.stop(StreamId::new(4).unwrap()).unwrap();
         assert_eq!(
-            composition.insert(config.clone(), source(6, &trace)),
+            composition.insert_with(config.clone(), || source(6, &trace)),
             Err(CompositionError::InvalidIdentity)
         );
         config.output_route = "safe".into();
-        composition.insert(config, source(6, &trace)).unwrap();
+        composition
+            .insert_with(config, || source(6, &trace))
+            .unwrap();
+    }
+
+    #[test]
+    fn failed_shutdown_transfers_unconfirmed_owner_for_later_recovery() {
+        let trace = Arc::new(Mutex::new(Vec::new()));
+        let mut composition = StreamComposition::default();
+        let id = StreamId::new(1).unwrap();
+        composition
+            .insert_with(config(1, "a", 3), || {
+                Box::new(Source {
+                    route: 1,
+                    next: 0,
+                    attempts: trace.clone(),
+                    close_fail_once: true,
+                })
+            })
+            .unwrap();
+        assert_eq!(composition.try_shutdown(), vec![id]);
+        assert_eq!(composition.state(id), Some(StreamState::Closing));
+        let mut owners = composition.into_owned();
+        assert_eq!(owners.len(), 1);
+        assert_eq!(owners[0].config.options_revision, 3);
+        assert_eq!(owners[0].state, StreamState::Closing);
+        owners[0].pipeline.stop().unwrap();
+        assert_eq!(
+            trace
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|event| **event == (1, "stop"))
+                .count(),
+            2
+        );
     }
 }
