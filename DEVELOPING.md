@@ -18,5 +18,6 @@ effective grants before loading native code. A signed extension still runs as
 trusted in-process code. Publication of a source repository does not grant an
 extension runtime access. Additive development composition and option schemas
 are source-tested; production add-on activation and live devices remain
-unqualified. Repository URLs, a public source license and release tags must
-be finalized before a public build claim.
+unqualified. Project-authored source is MIT licensed; third-party notices
+remain separate. Repository URLs and release tags must be finalized before a
+public build claim.

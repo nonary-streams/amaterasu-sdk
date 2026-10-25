@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "amaterasu-contracts"
 version.workspace = true
 edition.workspace = true
