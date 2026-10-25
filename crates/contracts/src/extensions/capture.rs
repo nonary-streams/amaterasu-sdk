@@ -70,9 +70,10 @@ pub struct CaptureProviderDescriptor {
     pub configuration: Option<ExtensionConfigurationRef>,
 }
 
-/// Host-derived signed approval. Priority is never taken from the module's
-/// descriptor. Merely constructing this Rust value does not authenticate it;
-/// the caller must obtain it from verified package policy.
+/// Host-owned approval bounded by the selected signed component requests and
+/// effective grants. The bootstrap settings carrying this value are not
+/// themselves signed. Priority is never taken from the module's descriptor;
+/// merely constructing this Rust value does not authenticate it.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CaptureProviderApproval {
@@ -90,6 +91,24 @@ pub struct CaptureProviderApproval {
     pub option_namespace: Option<String>,
 }
 
+/// Trusted host configuration for one capture slot. Each candidate is
+/// rechecked against the selected signed component set and effective grants
+/// before any plan is passed to a module. A declaration here alone is not
+/// provider authority.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureProviderPolicy {
+    pub selection: CaptureSelection,
+    pub candidates: Vec<CaptureProviderRecord>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CaptureProviderRecord {
+    pub descriptor: CaptureProviderDescriptor,
+    pub approval: CaptureProviderApproval,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Default)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CaptureSelection {
@@ -98,7 +117,7 @@ pub enum CaptureSelection {
     Builtin,
     /// An explicit provider never silently falls back to another extension.
     Exact { provider_id: String },
-    /// Choose the highest signed priority, then lexical identity as a tie break.
+    /// Choose the highest host-approved priority, then lexical identity.
     Automatic,
 }
 
@@ -118,7 +137,8 @@ pub struct CaptureCandidate<'a> {
     pub provider_grants: &'a Grants,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CaptureBindPlan {
     pub provider_id: String,
     pub component_id: String,

@@ -22,11 +22,22 @@ pub use amaterasu_contracts::encoder::{
 pub use amaterasu_contracts::extensions::ExtensionVersion;
 pub use amaterasu_contracts::extensions::capture::{
     CaptureBindPlan, CaptureCandidate, CaptureCapability, CapturePlanError,
-    CaptureProviderApproval, CaptureProviderDescriptor, CaptureRequirement, CaptureSelection,
-    CaptureSlot, plan_capture_provider,
+    CaptureProviderApproval, CaptureProviderDescriptor, CaptureProviderPolicy,
+    CaptureProviderRecord, CaptureRequirement, CaptureSelection, CaptureSlot,
+    plan_capture_provider,
 };
 pub use amaterasu_contracts::extensions::configuration::{
-    CONFIGURATION_SERVICE, ExtensionConfigurationRef,
+    CONFIGURATION_SERVICE, ExtensionConfigurationRef, ExtensionSettingsCategory,
+    ExtensionSettingsContribution,
+};
+pub use amaterasu_contracts::extensions::encoder::{
+    EncoderBindPlan, EncoderCandidate, EncoderExtensionSelection, EncoderPlanError,
+    EncoderProviderApproval, EncoderProviderDescriptor, EncoderProviderPolicy,
+    EncoderProviderRecord, EncoderRequirement, plan_encoder_provider,
+};
+pub use amaterasu_contracts::extensions::presentation::{
+    ChoiceError, ProviderChoice, ProviderChoiceKind, capture_dropdown_options,
+    encoder_dropdown_options,
 };
 pub use amaterasu_contracts::hooks::{
     FrameMemory, HookCancelReason, HookDecision, HookEvent, HookMode, HookPoint, HookReply,

@@ -23,6 +23,43 @@ pub struct ExtensionConfigurationRef {
     pub namespace: String,
 }
 
+/// A display category for an existing caller-owned configuration document.
+/// This is UI metadata, not a new settings store or a permission grant. The
+/// management API must read the registered schema and values through its own
+/// authenticated, scope-checked configuration route before rendering fields.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExtensionSettingsCategory {
+    General,
+    Capture,
+    Encoding,
+    Audio,
+    Input,
+    Network,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtensionSettingsContribution {
+    pub configuration: ExtensionConfigurationRef,
+    pub category: ExtensionSettingsCategory,
+    /// Plain-text heading only. Clients must render it as text, never markup.
+    pub label: String,
+}
+
+impl ExtensionSettingsContribution {
+    pub fn validate_for(&self, component_id: &str) -> Result<(), &'static str> {
+        self.configuration.validate_for(component_id)?;
+        if self.label.is_empty()
+            || self.label.chars().count() > 80
+            || self.label.chars().any(char::is_control)
+        {
+            return Err("extension settings label is invalid");
+        }
+        Ok(())
+    }
+}
+
 impl ExtensionConfigurationRef {
     pub fn validate_for(&self, component_id: &str) -> Result<(), &'static str> {
         if !self.version.is_supported()
@@ -123,5 +160,20 @@ mod tests {
         assert!(config.register_payload(too_large).is_err());
         let bounded = Map::from_iter([("description".into(), json!("x".repeat(100)))]);
         assert!(config.register_payload(bounded).is_ok());
+    }
+
+    #[test]
+    fn category_reference_cannot_take_another_components_settings() {
+        let mut contribution = ExtensionSettingsContribution {
+            configuration: configuration(),
+            category: ExtensionSettingsCategory::Encoding,
+            label: "Encoder quality".into(),
+        };
+        assert!(contribution.validate_for("org.example.capture").is_ok());
+        assert!(contribution.validate_for("org.example.other").is_err());
+        contribution.label = "<script>\n".into();
+        assert!(contribution.validate_for("org.example.capture").is_err());
+        contribution.label = "x".repeat(81);
+        assert!(contribution.validate_for("org.example.capture").is_err());
     }
 }

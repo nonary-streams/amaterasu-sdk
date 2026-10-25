@@ -187,9 +187,24 @@ remains authoritative for schema types, bounds, defaults, migration, CAS and
 persistence. No parallel settings store, validation language or browser route
 is introduced. An uncertain write requires fresh readback; do not replay it.
 
+For a plugin chooser, `capture_dropdown_options` and
+`encoder_dropdown_options` derive bounded, compatible choices from the exact
+approved provider candidates and effective grants. They return stable provider
+IDs, component IDs, service IDs and an approved configuration namespace; the
+host or UI may show the ID as plain text. `EncoderProviderDescriptor` and
+`EncoderProviderApproval` mirror the capture approval boundary and can plan an
+exact `EncoderApi` bind. `ExtensionSettingsContribution` assigns an existing
+caller-owned configuration document to General, Capture, Encoding, Audio,
+Input or Network without inventing a new settings schema. These contracts do
+not scan a repository, download an artifact, register a service or alter the
+running Video module. A host adapter must first match every candidate to a
+verified signed component and approved effective grants, then the native bind
+and encoder enumeration/open must succeed before saying it is available.
+
 Video has an exact signed-settings override for the X11 capture slot; the
 general provider planning contract does not yet wire every slot or expose
-extension options in Management. It does not enable
+extension options in Management. The encoder planning contract is not wired
+into package verification or Video selection yet. It does not enable
 input, audio, network or UI replacement. A replacement UI needs the separately
 verified signed web-bundle path and its own trust/product decision. No default
 profile grants or runtime registrations change by adding these types.

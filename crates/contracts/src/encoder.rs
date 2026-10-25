@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 pub const SOFTWARE_ENCODER_ID: &str = "amaterasu.software.x264";
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum VideoCodec {
     H264,

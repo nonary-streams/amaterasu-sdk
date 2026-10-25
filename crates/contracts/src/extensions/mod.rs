@@ -6,6 +6,8 @@
 
 pub mod capture;
 pub mod configuration;
+pub mod encoder;
+pub mod presentation;
 
 use serde::{Deserialize, Serialize};
 
