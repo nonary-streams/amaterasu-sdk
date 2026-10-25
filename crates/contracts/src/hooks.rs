@@ -127,8 +127,10 @@ pub enum HookSubject {
 #[serde(deny_unknown_fields)]
 pub struct HookEvent {
     pub version: HookVersion,
-    /// Correlation ID unique within the producer epoch. Gaps are allowed;
-    /// EventBus publisher sequence/resync is the delivery-gap signal.
+    /// Correlation ID unique within the producer epoch, possibly shared across
+    /// topics. Gaps are allowed and do not prove a dropped observation.
+    /// EventBus publisher sequence/resync covers only accepted publishes;
+    /// a producer may drop locally before calling the broker.
     pub event_id: u64,
     pub point: HookPoint,
     pub mode: HookMode,
