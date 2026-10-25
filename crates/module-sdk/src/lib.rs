@@ -1,5 +1,6 @@
 //! Safe module-facing API. ABI ownership and panic containment live in `exports`.
 pub mod exports;
+pub mod hooks;
 mod native;
 pub use native::NativeBinding;
 
@@ -9,6 +10,10 @@ pub use amaterasu_contracts::encoder::{
     NvencSettingsOverrides, NvencSplitEncode, NvencTwoPass, SOFTWARE_ENCODER_ID,
     SoftwareEncoderOptions, VideoCodec, VideoStreamFormat, validate_min_threads,
     validate_software_options,
+};
+pub use amaterasu_contracts::hooks::{
+    FrameMemory, HookCancelReason, HookDecision, HookEvent, HookMode, HookPoint, HookReply,
+    HookSubject, HookVersion, PixelFormat, VideoCodec as HookVideoCodec,
 };
 pub use amaterasu_contracts::{Command, HostLifecycleAction, Response, RuntimeHostContext};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};

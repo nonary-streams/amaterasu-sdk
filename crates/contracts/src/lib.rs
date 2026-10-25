@@ -1,5 +1,6 @@
 //! Version 1 control-plane messages. These types are independent of the bootstrap ABI.
 pub mod encoder;
+pub mod hooks;
 pub mod virtual_display;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -274,11 +275,23 @@ pub enum Command {
     RegisterHook {
         hook: String,
     },
+    /// Discovers one hook already authorized by the installed runtime policy.
+    QueryHook {
+        hook: String,
+    },
+    /// Removes this participant after all invocations referencing it settle.
+    UnregisterHook {
+        hook: String,
+    },
     RunHook {
         hook: String,
         payload: Value,
     },
     HookResult {
+        invocation: u64,
+    },
+    /// The owner abandons one invocation and releases its broker references.
+    CancelHook {
         invocation: u64,
     },
 }
@@ -321,6 +334,14 @@ pub enum Response {
     },
     HookResult {
         proposals: Vec<Proposal>,
+    },
+    /// A scoped view of one installed hook. Participant order is significant.
+    HookInfo {
+        hook: String,
+        owner: String,
+        participants: Vec<String>,
+        registered: Vec<String>,
+        timeout_ms: u64,
     },
     /// Returned only to the reserved host control endpoint.
     HostLifecycle {
