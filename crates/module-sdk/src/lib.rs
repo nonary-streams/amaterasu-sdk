@@ -11,6 +11,15 @@ pub use amaterasu_contracts::encoder::{
     SoftwareEncoderOptions, VideoCodec, VideoStreamFormat, validate_min_threads,
     validate_software_options,
 };
+pub use amaterasu_contracts::extensions::ExtensionVersion;
+pub use amaterasu_contracts::extensions::capture::{
+    CaptureBindPlan, CaptureCandidate, CaptureCapability, CapturePlanError,
+    CaptureProviderApproval, CaptureProviderDescriptor, CaptureRequirement, CaptureSelection,
+    CaptureSlot, plan_capture_provider,
+};
+pub use amaterasu_contracts::extensions::configuration::{
+    CONFIGURATION_SERVICE, ExtensionConfigurationRef,
+};
 pub use amaterasu_contracts::hooks::{
     FrameMemory, HookCancelReason, HookDecision, HookEvent, HookMode, HookPoint, HookReply,
     HookSubject, HookVersion, PixelFormat, VideoCodec as HookVideoCodec,
