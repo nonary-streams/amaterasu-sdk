@@ -3,6 +3,13 @@ pub mod exports;
 pub mod hooks;
 mod native;
 pub use native::NativeBinding;
+pub mod processing;
+pub use amaterasu_media::processing::{
+    MEDIA_PROCESSOR_API_V1_SIZE, MEDIA_PROCESSOR_INTERFACE_MAJOR, MEDIA_PROCESSOR_INTERFACE_MINOR,
+    MediaProcessorApi, PROCESS_AFTER_ENCODE, PROCESS_BEFORE_ENCODE, PROCESS_BEFORE_FRAME,
+    PROCESS_DROP, PROCESS_PASS, PROCESS_REPLACE,
+};
+pub use processing::{FrameProcessOutcome, OwnedCpuFrame, ProcessorError};
 
 pub use amaterasu_abi as abi;
 pub use amaterasu_contracts::encoder::{

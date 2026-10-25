@@ -173,6 +173,11 @@ pub fn plan_capture_provider(
         if candidate.descriptor.slot != requirement.slot {
             continue;
         }
+        if let CaptureSelection::Exact { provider_id } = selection
+            && &candidate.approval.provider_id != provider_id
+        {
+            continue;
+        }
         let service = candidate.approval.service.as_str();
         if !candidate.provider_grants.native_provide.contains(service)
             || !consumer_grants.native_use.contains(service)
@@ -403,6 +408,49 @@ mod tests {
         .unwrap()
         .unwrap();
         assert_eq!(plan.provider_id, "org.example.a");
+    }
+
+    #[test]
+    fn exact_selection_ignores_an_unselected_providers_missing_consumer_grant() {
+        let selected = candidate("org.example.selected", 1);
+        let unselected = candidate("org.example.unselected", 9);
+        let choices = [
+            CaptureCandidate {
+                descriptor: &selected.0,
+                approval: &selected.1,
+                provider_grants: &selected.2,
+            },
+            CaptureCandidate {
+                descriptor: &unselected.0,
+                approval: &unselected.1,
+                provider_grants: &unselected.2,
+            },
+        ];
+        let consumer = Grants {
+            native_use: [selected.0.service.clone()].into(),
+            ..Grants::default()
+        };
+        let plan = plan_capture_provider(
+            &CaptureSelection::Exact {
+                provider_id: selected.0.provider_id.clone(),
+            },
+            &requirement(),
+            &choices,
+            &consumer,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(plan.provider_id, selected.0.provider_id);
+        assert_eq!(
+            plan_capture_provider(
+                &CaptureSelection::Automatic,
+                &requirement(),
+                &choices,
+                &consumer,
+            ),
+            Err(CapturePlanError::PermissionDenied),
+            "automatic selection still checks every same-slot candidate"
+        );
     }
 
     #[test]

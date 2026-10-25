@@ -21,6 +21,8 @@ mod geometry;
 pub use geometry::*;
 mod transport;
 pub use transport::*;
+pub mod processing;
+pub use processing::*;
 
 pub const INTERFACE_MAJOR: u32 = 1;
 pub const INTERFACE_MINOR: u32 = 0;

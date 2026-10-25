@@ -9,6 +9,48 @@ explicitly bounded ways to observe lifecycle facts:
 | --- | --- | --- | --- |
 | Deferred observation | EventBus `Publish`/`Subscribe` | Status, metrics, diagnostics | No |
 | Ordered control hook | `RegisterHook`/`RunHook`/`HookResult` | Non-realtime policy proposals | No |
+| Native CPU processor v1 | Exact signed `NativeRegister`/`NativeBind` service | Trusted, synchronous CPU frame processing and encoded-packet observation | CPU pixels only, with explicit owned replacement |
+
+## Trusted native CPU processing
+
+`amaterasu_media::processing::MediaProcessorApi` is a separate versioned C
+table, not an EventBus message or a control hook. A signed package must grant
+the provider `native_provide` and the consumer `native_use` for the same exact
+namespaced service and load the provider before its consumer. The provider
+registers one factory with `NativeRegister`; the consumer requests the v1.0
+table with `NativeBind`, which checks the live interface header and size.
+Duplicate registrations are rejected. The API's existence does not grant a
+module permission or enable a processor in a default product profile.
+
+The table defines `PROCESS_BEFORE_FRAME` and `PROCESS_BEFORE_ENCODE` for
+borrowed CPU BGRA8 or NV12 `CpuFrame` inputs. `PROCESS_PASS` preserves the
+input, `PROCESS_DROP` discards that CPU frame, and `PROCESS_REPLACE` writes
+exactly one borrowed output through `FrameSink`. The SDK copies that output
+into `OwnedCpuFrame` before the callback returns. Geometry, format, stride,
+timestamp and sequence must remain unchanged; output size is checked with
+the existing `frame_size` bound of 128 MiB. A malformed decision, extra sink
+call, shape change, failed callback or over-budget call fails closed. A
+consumer may use `OwnedCpuFrame::borrowed()` only while keeping its owned
+bytes alive through the downstream synchronous submit.
+
+`PROCESS_AFTER_ENCODE` is observation-only in v1. The processor receives a
+borrowed, validated `EncodedPacket` and must choose PASS without a packet sink
+call. REPLACE and DROP are rejected: rewriting encoded bytes safely requires
+codec-specific parameter-set and access-unit validation. DMA-BUF/GPU frames
+have no entry point here. A consumer must pass them unchanged or reject an
+explicit policy that requires a CPU transform; this ABI does not imply GPU
+zero-copy support.
+
+SDK calls are serialized on the consumer's module thread, must not reenter the
+same binding, and must finish before releasing the binding or unloading its
+provider. Native callbacks must not retain borrowed input/sink pointers or
+unwind. `budget_us` is limited to 1–5,000 microseconds and measured only
+after the call returns. It detects an overrun but cannot interrupt blocked
+native code, so a caller must not promise a hard realtime deadline. An
+overrun or malformed result should disable the processor or fail the stream
+according to the signed product policy; it must not silently substitute an
+unapproved transform. Existing media behavior is unchanged until a consumer
+explicitly binds and calls this table.
 
 The installed, verified runtime policy specifies the hook owner, ordered
 participants, timeout and per-principal hook grant. A publisher's manifest or
@@ -98,8 +140,56 @@ already completed or unknown invocation is reported as an error.
 ## Boundaries still to implement
 
 The typed contract is not, by itself, before/after producer wiring. Each module
-must opt in and publish a documented observation at a safe point. Zero-copy
-frame access, GPU surfaces, mutable packet bytes, input rewrites and synchronous
-before-encode transformations require separate, versioned native interfaces
-with explicit borrowed-buffer lifetime, threading, cancellation and failure
-isolation. Do not advertise those capabilities based on this control-plane API.
+must opt in and publish a documented observation at a safe point. The native
+CPU processor above is a separate contract for synchronous pixel processing;
+it does not follow from these control-plane messages. GPU surfaces, mutable
+encoded packet bytes and input rewrites still need their own contracts.
+
+## Replacement providers and extension options
+
+Observation hooks and replacement providers are different contracts. A hook
+receives copied metadata and never owns capture. A replacement capture provider
+implements the existing `NativeServiceFactory` and versioned
+`amaterasu_media::CaptureApi` table under its own namespaced service. The
+broker already permits one factory per exact service and checks
+`native_provide`/`native_use` grants; registration cannot replace a live
+factory. `NativeBinding` keeps a provider table/context alive until release.
+
+`amaterasu_contracts::extensions::capture` adds an additive **planning**
+contract. A provider descriptor names an existing video slot (for example
+`pipewire`), component principal, exact namespaced service, interface version,
+and declared capabilities. A separate `CaptureProviderApproval` must be
+derived from verified host/package policy; it supplies the signed priority,
+service, allowed capabilities and optional configuration identity. The helper
+`plan_capture_provider` checks exact identity/service/component pairing,
+provider and consumer native grants, ABI floor, capabilities and selection.
+Its default `Builtin` choice returns no extension plan. `Exact` never silently
+falls back; `Automatic` orders compatible candidates by signed priority then
+identity. The result is an exact `NativeBind` request plan, **not** a registry,
+new grant, loaded module or successful capture session.
+
+The real bind must still check the returned table header and size before any
+callback. `BorrowedDmaBuf` requires the capture v1.4 ABI and means descriptors
+are borrowed only through the synchronous callback. A consumer retaining them
+must duplicate FDs and respect acquire fences and compositor reuse; the
+descriptor does not prove an end-to-end GPU zero-copy encode path. A provider
+must not call back after its read returns, reenter a stream concurrently, or
+unload while a binding/callback remains. Release consumers and their buffers,
+then provider bindings, then module-owned threads and factory code. A failed
+callback or partial bind fails the selected session closed; the planner does
+not retry a different provider behind an explicit choice.
+
+Extension settings use the existing caller-scoped
+`amaterasu.configuration/1` service. `ExtensionConfigurationRef` binds the
+approved option identity to that same component principal and formats its
+existing `register`, `get` and revisioned `update` operations. Configuration
+remains authoritative for schema types, bounds, defaults, migration, CAS and
+persistence. No parallel settings store, validation language or browser route
+is introduced. An uncertain write requires fresh readback; do not replay it.
+
+Video has an exact signed-settings override for the X11 capture slot; the
+general provider planning contract does not yet wire every slot or expose
+extension options in Management. It does not enable
+input, audio, network or UI replacement. A replacement UI needs the separately
+verified signed web-bundle path and its own trust/product decision. No default
+profile grants or runtime registrations change by adding these types.
