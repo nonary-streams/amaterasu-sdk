@@ -19,5 +19,5 @@ trusted in-process code. Publication of a source repository does not grant an
 extension runtime access. Additive development composition and option schemas
 are source-tested; production add-on activation and live devices remain
 unqualified. Project-authored source is MIT licensed; third-party notices
-remain separate. Repository URLs and release tags must be finalized before a
-public build claim.
+remain separate. The `nonary-streams` source repositories are public;
+release tags and installed-host qualification remain separate.
