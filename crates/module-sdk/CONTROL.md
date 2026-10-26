@@ -12,7 +12,11 @@ executable elevation request/status/launch/cancel. There is no approve/deny API
 or caller-supplied principal. Review and OS authorization are separate host
 boundaries. An elevation approval refers to the plugin's exact reviewed
 executable and direct arguments, with an empty environment and `/` working
-directory; it is not authority to select an arbitrary executable path.
+directory on Linux. Windows accepts a narrow drive-absolute directory that
+must exactly match the installed broker's protected working directory. This
+lexical SDK check does not establish directory ownership; the broker must pin
+and verify it. Neither platform permits the plugin to select an arbitrary
+executable path.
 
 Cancellation withdraws only the requesting child's pending or approved
 unattempted request and reports `revoked`. Cancellation cannot undo an action.

@@ -211,6 +211,36 @@ mod tests {
     }
 
     #[test]
+    fn typed_windows_launch_uses_the_shared_path_contract() {
+        let reply = format!(
+            "{{\"ok\":true,\"code\":\"ok\",\"request_id\":\"{ID}\",\"state\":\"pending\",\"attempted\":false}}\n"
+        );
+        let mut client = ControlClient::new(Cursor::new(reply), Vec::new());
+        let cwd = r"C:\ProgramData\Amaterasu\ElevatedCwd";
+        assert_eq!(
+            client
+                .request_elevation(
+                    LaunchSpec {
+                        arguments: vec!["--synthetic".into()],
+                        environment: Default::default(),
+                        cwd: cwd.into(),
+                    },
+                    "exact verified plugin launch".into(),
+                )
+                .unwrap()
+                .request_id
+                .as_deref(),
+            Some(ID),
+        );
+        let (_, bytes) = client.into_parts();
+        let sent: ControlRequest =
+            serde_json::from_slice(bytes.strip_suffix(b"\n").unwrap()).unwrap();
+        assert!(
+            matches!(sent, ControlRequest::RequestElevation { launch, .. } if launch.cwd == cwd)
+        );
+    }
+
+    #[test]
     fn eof_mismatch_and_oversize_retire_without_replaying() {
         for reply in [
             Vec::new(),

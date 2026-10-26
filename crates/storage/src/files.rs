@@ -291,20 +291,31 @@ fn replace_file(source: &Path, destination: &Path) -> StorageResult<()> {
     Ok(())
 }
 
-/// Excludes another supervisor or staging operation while this host root is in use.
-/// The operating system releases the lock if the process exits unexpectedly.
+/// Short package-state transaction lock, or a separate long-lived host-instance
+/// lock. The operating system releases either lock on process exit.
 pub struct RootLock {
     _file: File,
 }
 
 impl RootLock {
     pub fn acquire(root: &Path) -> StorageResult<Self> {
+        Self::acquire_file(root, "host.lock")
+    }
+
+    /// Long-lived singleton service guard. Package mutations use the separate
+    /// short `host.lock` transaction lock so staging can queue a graph while a
+    /// worker is serving streams; this guard still excludes a second host.
+    pub fn acquire_instance(root: &Path) -> StorageResult<Self> {
+        Self::acquire_file(root, "host-instance.lock")
+    }
+
+    fn acquire_file(root: &Path, name: &str) -> StorageResult<Self> {
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)
             .read(true)
             .write(true)
-            .open(root.join("host.lock"))
+            .open(root.join(name))
             .map_err(|error| error.to_string())?;
 
         file.try_lock()
@@ -316,6 +327,24 @@ impl RootLock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_instance_guard_allows_short_state_transactions_but_excludes_second_host() {
+        let root = std::env::temp_dir().join(format!(
+            "amaterasu-instance-lock-{}",
+            crate::random_identifier().unwrap()
+        ));
+        fs::create_dir(&root).unwrap();
+        let instance = RootLock::acquire_instance(&root).unwrap();
+        assert!(RootLock::acquire_instance(&root).is_err());
+        let transaction = RootLock::acquire(&root).unwrap();
+        assert!(RootLock::acquire(&root).is_err());
+        drop(transaction);
+        assert!(RootLock::acquire(&root).is_ok());
+        drop(instance);
+        assert!(RootLock::acquire_instance(&root).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn machine_secret_protection_requires_a_regular_file() {

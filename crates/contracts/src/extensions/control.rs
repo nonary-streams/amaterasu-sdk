@@ -22,8 +22,40 @@ pub struct LaunchSpec {
     pub arguments: Vec<String>,
     /// The initial protocol requires this map to be empty.
     pub environment: BTreeMap<String, String>,
-    /// The initial protocol accepts only `/`.
+    /// Linux uses `/`; Windows uses a protected drive-absolute directory.
+    /// The host and OS broker narrow this to the installed exact directory.
     pub cwd: String,
+}
+
+/// Shared lexical admission for a local Windows path. This does not prove
+/// ownership or safety: the privileged broker must pin protected handles.
+pub fn windows_absolute_local_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    if bytes.len() < 3 || !bytes[0].is_ascii_uppercase() || &bytes[1..3] != b":\\" {
+        return false;
+    }
+    if path.len() > 240 || !path.is_ascii() || path.contains(['/', '\0']) {
+        return false;
+    }
+    if path.len() == 3 {
+        return true;
+    }
+    path[3..].split('\\').all(|part| {
+        let stem = part
+            .split('.')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
+        !part.is_empty()
+            && !part.ends_with(['.', ' '])
+            && !part
+                .chars()
+                .any(|c| c.is_control() || "<>:\"|?*".contains(c))
+            && !matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+            && !(stem.len() == 4
+                && (stem.starts_with("COM") || stem.starts_with("LPT"))
+                && matches!(stem.as_bytes()[3], b'1'..=b'9'))
+    })
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -88,7 +120,7 @@ impl ControlRequest {
             }
             Self::RequestElevation { launch, reason } => {
                 validate_reason(reason)?;
-                if launch.cwd != "/"
+                if (launch.cwd != "/" && !windows_absolute_local_path(&launch.cwd))
                     || !launch.environment.is_empty()
                     || launch.arguments.len() > 16
                     || launch
@@ -287,6 +319,24 @@ mod tests {
                 .insert("LD_PRELOAD".into(), "payload".into());
         }
         assert!(changed.validate().is_err());
+        if let ControlRequest::RequestElevation { launch, .. } = &mut changed {
+            launch.environment.clear();
+            launch.cwd = r"C:\ProgramData\Amaterasu\ElevatedCwd".into();
+        }
+        assert!(
+            changed.validate().is_err(),
+            "the unsafe reason remains rejected"
+        );
+        if let ControlRequest::RequestElevation { reason, .. } = &mut changed {
+            *reason = "Windows plugin request".into();
+        }
+        assert!(changed.validate().is_ok());
+        for cwd in [r"C:relative", r"\\server\share", r"C:\..\x", r"C:\NUL.txt"] {
+            if let ControlRequest::RequestElevation { launch, .. } = &mut changed {
+                launch.cwd = cwd.into();
+            }
+            assert!(changed.validate().is_err(), "{cwd}");
+        }
         assert!(
             ControlRequest::Cancel {
                 request_id: "other".into()
