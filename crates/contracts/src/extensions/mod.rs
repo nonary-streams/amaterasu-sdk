@@ -6,6 +6,7 @@
 
 pub mod capture;
 pub mod configuration;
+pub mod control;
 pub mod encoder;
 pub mod presentation;
 

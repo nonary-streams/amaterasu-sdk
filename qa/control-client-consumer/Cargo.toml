@@ -1,0 +1,11 @@
+[package]
+name = "external-control-client-consumer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+amaterasu-module-sdk = { path = "../../crates/module-sdk" }
+serde_json = "1"
