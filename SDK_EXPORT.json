@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "core_source_commit": "f9f7de2bff30b3c6727b57ec7504c0afb38d9e58",
+  "core_source_commit": "66b67d053ccb27ac127d779a76a530e88d71ee8c",
   "sdk_base_commit": "b6197e6145fb1f1adb67566e512a1210544b213b",
-  "sdk_parent_commit": "a5ed264bcb06880204f2ee24bb3e7ede425fafff",
+  "sdk_parent_commit": "20b39f65f19b4c7fcf900a469605bc1cdb31864b",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Standalone source SDK snapshot; no publication, signed package, installation or native qualification.",
   "seed_crates": [
@@ -10,7 +10,8 @@
     "contracts",
     "module-sdk",
     "media",
-    "storage"
+    "storage",
+    "windows-capture-geometry"
   ],
   "workspace_members": [
     "crates/abi",
@@ -22,7 +23,8 @@
     "crates/module-sdk",
     "crates/network-api",
     "crates/network-sockets",
-    "crates/storage"
+    "crates/storage",
+    "crates/windows-capture-geometry"
   ],
   "local_dependency_edges": [
     {
@@ -89,6 +91,11 @@
       "from": "crates/network-sockets",
       "name": "amaterasu-network-api",
       "to": "crates/network-api"
+    },
+    {
+      "from": "crates/windows-capture-geometry",
+      "name": "amaterasu-media",
+      "to": "crates/media"
     }
   ],
   "excluded_source_paths": {
@@ -547,7 +554,7 @@
     },
     {
       "path": "crates/module-sdk/src/display/status.rs",
-      "sha256": "9dc4deb7ebe9f6a088f9522f5444f73592544601874c06856deb77b72c9c432b",
+      "sha256": "b10e82486060b51c26dfaf28b95b8de717f67a26f7993c5c35954d2fb3933537",
       "mode": "0o644"
     },
     {
@@ -856,6 +863,36 @@
       "mode": "0o644"
     },
     {
+      "path": "crates/windows-capture-geometry/Cargo.toml",
+      "sha256": "c481a88ae488cf8e559b0f9e1a3b8c7377f6f89aff8e07ccc1769b4fbf2f5c23",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/windows-capture-geometry/README.md",
+      "sha256": "de1fadc3f401c1a35186d90a213a2104938ff3252b1be64fe0ab50e26b61eee3",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/windows-capture-geometry/src/lib.rs",
+      "sha256": "a6962fe9dbfcd24228d1ea26d28562d8aee18e2c1a0a989601a084921f7f2462",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/windows-capture-geometry/src/model.rs",
+      "sha256": "fc1b38c4f2d46d4f72d2c28b79c17c4690dfebf8a29c0056099f2254bd603cd6",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/windows-capture-geometry/src/platform.rs",
+      "sha256": "208f644e51208995279e745706af3150173aa6a5ef0dc72db41d9f7d89d22e4f",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/windows-capture-geometry/src/topology_tests.rs",
+      "sha256": "f9b67476740a774cdcce64ebaa65e4eda8e777b490a1134eb7c75ddb608ccc8a",
+      "mode": "0o644"
+    },
+    {
       "path": "docs/binary-transfer-api.md",
       "sha256": "aa76763893d6c27d0dd8aabf5d66d33c304d3ef162d452113a95d8dc497736ff",
       "mode": "0o644"
@@ -986,24 +1023,34 @@
       "mode": "0o644"
     }
   ],
+  "public_native_helpers": [
+    {
+      "crate": "windows-capture-geometry",
+      "scope": "Reusable native capture-provider platform helper; OS details remain at that boundary, outside generic consumer contracts."
+    }
+  ],
   "lockfile": {
     "seed": "Cargo.lock from the same frozen core commit",
-    "resolution": "Pruned offline for the standalone ten-crate graph; retained registry resolutions match the core lockfile",
-    "registry_package_count": 88,
+    "resolution": "Pruned offline for the standalone eleven-crate graph; every retained registry version and checksum matches the core lockfile",
+    "registry_package_count": 98,
     "registry_resolutions_not_in_core_lock": []
   },
   "validation": {
-    "workspace_manifest_count": 10,
+    "workspace_manifest_count": 11,
     "nested_standalone_example_manifest_count": 2,
     "all_local_dependency_paths_inside_export": true,
     "unexpected_git_dependencies": 0,
+    "focused_scoped_status_tests": {
+      "passed": 2,
+      "failed": 0
+    },
     "default_tests": {
-      "passed": 295,
+      "passed": 304,
       "failed": 0,
       "ignored": 0
     },
     "all_features_tests": {
-      "passed": 304,
+      "passed": 313,
       "failed": 0,
       "ignored": 0
     },
@@ -1011,24 +1058,23 @@
     "clippy_default": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings passed",
     "clippy_all_features": "cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings passed",
     "c_abi": "Five public C11 layout/logging translation units compile with -Wall -Wextra -Werror; logging executable passes",
-    "platform": "Linux x86_64; Rust 1.99.1 and GCC 16.2.1",
-    "standalone_remote_session": {
-      "source_commit": "196e2e48f9490e80a1284580d99b05280df4d1eb",
-      "source_scope": "Plugin-only archive of frozen core source plus the standalone test-dependency separation fix",
-      "native_build": "Public SDK only; no State/runtime/host provider package or external source path in dependency graph",
+    "windows_geometry_lib": {
+      "target": "x86_64-pc-windows-gnu",
+      "toolchain": "isolated official Rust 1.99.1; process-local RUSTC only",
+      "command": "cargo check --target x86_64-pc-windows-gnu -p amaterasu-windows-capture-geometry --lib --locked --offline",
+      "result": "passed; independent Windows features include DXGI Common",
+      "native_hardware_exercised": false
+    },
+    "standalone_remote_session_interface_smoke": {
+      "source_commit": "66b67d053ccb27ac127d779a76a530e88d71ee8c",
       "native_tests": {
-        "passed": 123,
+        "passed": 127,
         "failed": 0,
         "ignored": 0
       },
-      "native_format": "passed",
-      "native_clippy": "all targets; warnings denied; passed",
-      "ui_type_check": "public sdk/web/amaterasu-ui.d.ts; passed",
-      "ui_tests": {
-        "passed": 36,
-        "failed": 0
-      },
-      "ui_build": "passed"
-    }
+      "release_build": "passed against this SDK export",
+      "scope": "Interface smoke only; private provider cleanup follow-up and final native acceptance are qualified separately."
+    },
+    "platform": "Linux x86_64; Rust 1.99.1 and GCC 16.2.1"
   }
 }

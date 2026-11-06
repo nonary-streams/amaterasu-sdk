@@ -1,7 +1,7 @@
 # Building and consuming the SDK
 
 This snapshot comes from core commit
-`f9f7de2bff30b3c6727b57ec7504c0afb38d9e58` and SDK base
+`66b67d053ccb27ac127d779a76a530e88d71ee8c` and SDK base
 `b6197e6145fb1f1adb67566e512a1210544b213b`. Exported Rust source, standalone
 examples, C headers, C tests and guides retain their source bytes. Only the root
 workspace wrapper, standalone lockfile and export documentation are generated.
@@ -9,11 +9,18 @@ Guides retain references to core integration modules and fixtures that are not
 part of this standalone export.
 `SDK_EXPORT.json` lists every exported source file and its SHA-256 hash.
 
-The five seed crates are `abi`, `contracts`, `module-sdk`, `media` and `storage`.
-Their full dependency closure, including optional and platform-specific paths,
-adds `configuration-schema`, `data-plane`, `extension-api`, `network-api` and
-`network-sockets`. All ten workspace crates use relative paths within this
-repository. No core host, runtime or product provider source is needed.
+The six explicit seed crates are `abi`, `contracts`, `module-sdk`, `media`,
+`storage` and `windows-capture-geometry`. Their full dependency closure, including
+optional and platform-specific paths, adds `configuration-schema`, `data-plane`,
+`extension-api`, `network-api` and `network-sockets`. All eleven workspace crates
+use relative paths within this repository. No core host, runtime or product
+provider source is needed.
+
+The Windows geometry crate is a reusable helper for native capture providers.
+Use its OS details only at that platform boundary; generic consumer contracts
+continue to exchange opaque capture targets. Its Windows dependency features
+are declared locally, including DXGI Common, so checking it alone does not rely
+on feature unification with a host capture provider.
 
 Rust 1.89 or newer, a supported platform toolchain and cached registry
 dependencies are required for offline builds. From this repository run:
@@ -29,6 +36,14 @@ cargo clippy --workspace --all-targets --all-features --locked --offline -- -D w
 `network-test-support` enables the socket-backed test implementation;
 `network-http` enables HTTP over the selected network interface. Default socket
 tests bind loopback. Ignored remote/wildcard binding tests remain opt-in.
+
+With the Windows target installed, validate the native helper independently:
+
+```sh
+cargo check --target x86_64-pc-windows-gnu -p amaterasu-windows-capture-geometry --lib --locked --offline
+```
+
+This cross-check verifies compilation; it does not exercise a Windows desktop.
 
 Compile each `sdk/tests/*.c` with a C11 compiler, `-Wall -Wextra -Werror`, and
 `-Isdk/include`. Layout tests compile as objects; `sdk/tests/logging.c` also

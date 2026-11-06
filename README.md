@@ -1,17 +1,22 @@
 # Amaterasu public SDK
 
 This standalone source snapshot exports the public SDK from Amaterasu core
-commit `f9f7de2bff30b3c6727b57ec7504c0afb38d9e58`, based on public SDK commit
+commit `66b67d053ccb27ac127d779a76a530e88d71ee8c`, based on public SDK commit
 `b6197e6145fb1f1adb67566e512a1210544b213b`. Extension authors can build against
 these libraries without the core source repository.
 
-The ten-crate workspace contains the bootstrap ABI, versioned control and
+The workspace has eleven crates containing the bootstrap ABI, versioned control and
 extension contracts, native media interfaces, module adapters, bounded data
 plane, configuration schema, storage helpers, network interface and optional
 network test implementation. `sdk/include` contains the public C headers;
 `sdk/tests` contains their layout and logging checks. SDK guides are in `docs`.
 `SDK_EXPORT.json` records the complete dependency closure, source file hashes,
 source revision and exclusions.
+
+`windows-capture-geometry` is an explicit native provider helper for Windows
+output verification. Its platform details stay at the native boundary; generic
+consumer contracts continue to use opaque targets. Scoped display status now
+requires explicit reference ownership before a consumer can prove absence.
 
 This revision intentionally follows the current core API rather than combining
 older SDK snapshots. Historical `control`, `composition` and hook APIs absent
