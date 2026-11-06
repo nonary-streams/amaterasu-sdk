@@ -1,7 +1,8 @@
 {
   "schema_version": 1,
-  "core_source_commit": "097d85ed93c6f0b5079631c58c789cf55df622a9",
+  "core_source_commit": "f9f7de2bff30b3c6727b57ec7504c0afb38d9e58",
   "sdk_base_commit": "b6197e6145fb1f1adb67566e512a1210544b213b",
+  "sdk_parent_commit": "a5ed264bcb06880204f2ee24bb3e7ede425fafff",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Standalone source SDK snapshot; no publication, signed package, installation or native qualification.",
   "seed_crates": [
@@ -441,17 +442,17 @@
     },
     {
       "path": "crates/module-sdk/src/capture/cpu_source.rs",
-      "sha256": "880b2612225a985c3218dcba0a2905f0dbccc6163437ab315bfe9473b319e6cd",
+      "sha256": "698198b0884ccc1b40d9c112b4223d8cee4f6bccc064631dbb768c390ee36fac",
       "mode": "0o644"
     },
     {
       "path": "crates/module-sdk/src/capture/cpu_source/tests.rs",
-      "sha256": "7d34e3dd1c1e75fbafe68e6b3179b2853dc75b65e5a83e737e8b83e62196c06f",
+      "sha256": "a1be6a3708af998f46521dd1275075d25091e5fd4326a536211a626f6289c9d7",
       "mode": "0o644"
     },
     {
       "path": "crates/module-sdk/src/capture/high_depth.rs",
-      "sha256": "3f07308014c1a85aa2d47923482fb9f63b4b22d5371df6fc0c98ef36311a4275",
+      "sha256": "b3057df6d7f6a3546444e1810e30411928bdbc5e03d1cb172d26f16bc8a87428",
       "mode": "0o644"
     },
     {
@@ -541,7 +542,12 @@
     },
     {
       "path": "crates/module-sdk/src/display.rs",
-      "sha256": "9046ef7ab9c743595f501f20bfda4fa5b4065e7058146a76f5da07ec10028da2",
+      "sha256": "bfae3e3e85bd303d8c4c9c241110a69275dd9514dd893e595265982d42d90875",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/module-sdk/src/display/status.rs",
+      "sha256": "9dc4deb7ebe9f6a088f9522f5444f73592544601874c06856deb77b72c9c432b",
       "mode": "0o644"
     },
     {
@@ -596,12 +602,12 @@
     },
     {
       "path": "crates/module-sdk/src/media.rs",
-      "sha256": "adae7e34a6d091829196ff0f814d516f5a03fba1f8878d0050f0ec81a75c96e6",
+      "sha256": "3b59caf0f0509edc30b19f27d1cba8feb5348ae391597f630720b87bed6e983e",
       "mode": "0o644"
     },
     {
       "path": "crates/module-sdk/src/media/generic.rs",
-      "sha256": "2a5583994b93c2a171b11a2c9d52d077568bebf92aa9ae16016b814cde396fdb",
+      "sha256": "14b8728ec0a1fb2b636fb71f75da280ad99c52646097ae960085ae07efef5d5d",
       "mode": "0o644"
     },
     {
@@ -656,12 +662,37 @@
     },
     {
       "path": "crates/module-sdk/src/processing.rs",
-      "sha256": "e27e18fb010342dd4f28d44a803028189a19b8fda49663413d5132df44b3d528",
+      "sha256": "9560cc2fa0f9a2007f15a38bddf8360af2caf3afed30c9d1dfea2a8f2f13fbb0",
       "mode": "0o644"
     },
     {
       "path": "crates/module-sdk/src/processing/consumer.rs",
       "sha256": "28f601c9fba6e8e16c9ec265e4fbd717ea1be488fbedf027fc6e3c91702b0cda",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/module-sdk/src/processing/resource.rs",
+      "sha256": "0b9cd401620b448933dbdd2dac38b7faf0e303352b43dd6beebf85aa1b2e69cb",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/module-sdk/src/processing/resource/consumer.rs",
+      "sha256": "5412572a86deed4f6866280e45ad1bde9447272c53f61cfc6cf45b036d708beb",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/module-sdk/src/processing/resource/factory.rs",
+      "sha256": "969eb85060922425abdc97227045f9f48e207273a195a1de25a9d675713e1b55",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/module-sdk/src/processing/resource/format.rs",
+      "sha256": "bc728b1dfc56bfcf62cc1c011dd164f495ba48696b1102d6394553734aa85f1c",
+      "mode": "0o644"
+    },
+    {
+      "path": "crates/module-sdk/src/processing/resource/tests.rs",
+      "sha256": "64112fc627a907e24692aeba70d3ee025827ecc20ccf19bc98138a0e40a61d7e",
       "mode": "0o644"
     },
     {
@@ -831,7 +862,7 @@
     },
     {
       "path": "docs/capture-plugin-sdk.md",
-      "sha256": "96803d4f2127d06870cf7ddf5fafcf767b4b1ddba0d45191a794e9f16e2c6d70",
+      "sha256": "661faac3a4870ff76337744a1b285a0d387fef8630258a9886173a056c47484d",
       "mode": "0o644"
     },
     {
@@ -852,6 +883,11 @@
     {
       "path": "docs/plugin-apis.md",
       "sha256": "9aded2e0f1be7246f58f9b5e92951f2b96909e13f6b1f515e21bbda8ee2fefc7",
+      "mode": "0o644"
+    },
+    {
+      "path": "docs/resource-frame-processing.md",
+      "sha256": "07c181ba94f05a2a56815dcd4c385e4676a37b8e0b76434bc1706cbaf6ed2c47",
       "mode": "0o644"
     },
     {
@@ -911,7 +947,7 @@
     },
     {
       "path": "sdk/include/amaterasu_media.h",
-      "sha256": "50f8f9b09251fcd960acd8b89faa02f0d5640dfeac61ceef0ccd3d658d50782e",
+      "sha256": "44afb4629740a191f8b4b994943e1f40d180f3aafeb967386bff486bdb14cc6d",
       "mode": "0o644"
     },
     {
@@ -941,7 +977,7 @@
     },
     {
       "path": "sdk/tests/media_layout.c",
-      "sha256": "6a955943bb373c20d5c4fca3b8d7fa5a82214f88504ffde0c6032ed6fa935a8e",
+      "sha256": "4f9474867472f321e15c9f61fdca3efab7a27192ef17477d7e067c6f903c9011",
       "mode": "0o644"
     },
     {
@@ -962,12 +998,12 @@
     "all_local_dependency_paths_inside_export": true,
     "unexpected_git_dependencies": 0,
     "default_tests": {
-      "passed": 287,
+      "passed": 295,
       "failed": 0,
       "ignored": 0
     },
     "all_features_tests": {
-      "passed": 296,
+      "passed": 304,
       "failed": 0,
       "ignored": 0
     },
@@ -975,6 +1011,24 @@
     "clippy_default": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings passed",
     "clippy_all_features": "cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings passed",
     "c_abi": "Five public C11 layout/logging translation units compile with -Wall -Wextra -Werror; logging executable passes",
-    "platform": "Linux x86_64; Rust 1.99.1 and GCC 16.2.1"
+    "platform": "Linux x86_64; Rust 1.99.1 and GCC 16.2.1",
+    "standalone_remote_session": {
+      "source_commit": "196e2e48f9490e80a1284580d99b05280df4d1eb",
+      "source_scope": "Plugin-only archive of frozen core source plus the standalone test-dependency separation fix",
+      "native_build": "Public SDK only; no State/runtime/host provider package or external source path in dependency graph",
+      "native_tests": {
+        "passed": 123,
+        "failed": 0,
+        "ignored": 0
+      },
+      "native_format": "passed",
+      "native_clippy": "all targets; warnings denied; passed",
+      "ui_type_check": "public sdk/web/amaterasu-ui.d.ts; passed",
+      "ui_tests": {
+        "passed": 36,
+        "failed": 0
+      },
+      "ui_build": "passed"
+    }
   }
 }
