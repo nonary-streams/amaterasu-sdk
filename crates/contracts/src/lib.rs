@@ -1,7 +1,5 @@
 //! Version 1 control-plane messages. These types are independent of the bootstrap ABI.
 pub mod encoder;
-pub mod extensions;
-pub mod hooks;
 pub mod virtual_display;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -11,16 +9,41 @@ use std::collections::{BTreeMap, BTreeSet};
 /// it may request that the trusted host restart or stop the selected runtime.
 pub const HOST_LIFECYCLE_SERVICE: &str = "amaterasu.host-lifecycle/1";
 
+/// Explicit host grant to request a signed package trial.
+pub const HOST_PACKAGE_ACTIVATION_SERVICE: &str = "amaterasu.host-package-activation/1";
+
+/// Trusted provider contract for a non-disruptive package replacement barrier.
+pub const HOST_PACKAGE_BARRIER_SERVICE: &str = "amaterasu.host-package-barrier/1";
+
+/// Effective call grant allowing a module to read the host-selected state root.
+/// It does not grant access to package metadata or host lifecycle commands.
+pub const HOST_STATE_CONTEXT_SERVICE: &str = "amaterasu.host-state-context/1";
+
 /// Reserved runtime endpoint identity injected by the verified host. Package
 /// component identities cannot use this name because it is not a valid name.
 pub const HOST_LIFECYCLE_CONTROL_PRINCIPAL: &str = "@amaterasu.host-lifecycle";
 pub const DIAGNOSTICS_COMPONENT: &str = "amaterasu.diagnostics";
+
+/// Reserved host-owned product-log service. Only management may call it;
+/// browser authorization is enforced separately by the management module.
+pub const HOST_LOG_SERVICE: &str = "amaterasu.host-logs/1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HostLifecycleAction {
     Restart,
     Quit,
+}
+
+/// Identifies a candidate already fetched into the trusted repository cache.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostPackageActivation {
+    pub repository_id: String,
+    pub catalog_digest: String,
+    pub manifest_digest: String,
+    pub expected_active: String,
+    pub expected_revision: String,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -70,6 +93,10 @@ pub struct HookSpec {
 #[serde(deny_unknown_fields)]
 pub struct RuntimeConfig {
     pub principals: BTreeMap<String, Grants>,
+    /// Trusted composition approvals for legacy untyped native factories, keyed
+    /// by provider principal and exact service. This does not grant native access.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub legacy_native_contracts: BTreeMap<String, BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub api_methods: Vec<ApiMethodApproval>,
     #[serde(default)]
@@ -85,6 +112,9 @@ pub struct RuntimeConfig {
     /// the host sets it after verification when creating its private control endpoint.
     #[serde(default)]
     pub host_lifecycle_control: bool,
+    /// Host-injected capability; signed package policy cannot enable it.
+    #[serde(default)]
+    pub host_package_activation_control: bool,
 }
 
 /// A wire contract can describe arbitrary namespaced methods. `Any` and
@@ -169,6 +199,20 @@ pub enum Command {
         service: String,
         factory: usize,
     },
+    /// Registers a native factory with an immutable interface-family identity.
+    /// Contract metadata is copied and checked before invoking a typed binding.
+    NativeRegisterTyped {
+        service: String,
+        factory: usize,
+        contract: String,
+    },
+    NativeBindTyped {
+        service: String,
+        interface_major: u32,
+        min_minor: u32,
+        min_size: u32,
+        contract: String,
+    },
     NativeBind {
         service: String,
         interface_major: u32,
@@ -183,6 +227,21 @@ pub enum Command {
     HostLifecycle {
         action: HostLifecycleAction,
     },
+    /// Request a host-verified package trial; only approved management may call.
+    HostPackageActivate {
+        request: HostPackageActivation,
+    },
+    /// Observe or cancel a pending activation before the host starts it.
+    HostPackageActivationStatus {},
+    HostPackageActivationCancel {},
+    /// The trusted barrier provider blocks new work and reports safe retirement.
+    HostPackageBarrierRegister {},
+    HostPackageBarrierPending {},
+    HostPackageBarrierReady {
+        ready: bool,
+    },
+    /// Reserved for the host control endpoint.
+    HostPackageActivationDrain {},
     /// Emits one bounded product log record through the trusted host transport.
     Log {
         level: u8,
@@ -201,6 +260,8 @@ pub enum Command {
     /// Reserved for the host endpoint; returns pending product log events.
     DrainLogEvents {},
     GetSettings {},
+    /// A bounded readiness hint; carries no provider data or effect authority.
+    NotifyWorkReady {},
     /// Returns host-owned context to the state service, and to the Linux audio
     /// module for its restart-safe cleanup journal. This prevents a module
     /// policy from impersonating a host decision through `GetSettings`.
@@ -216,6 +277,14 @@ pub enum Command {
         method: ApiMethod,
     },
     QueryApi {
+        service: String,
+        method: String,
+        interface_major: u32,
+        min_minor: u32,
+    },
+    /// Returns the installed approval, including its broker-selected provider.
+    /// Subject to the same registration and caller checks as `QueryApi`.
+    QueryApiApproval {
         service: String,
         method: String,
         interface_major: u32,
@@ -276,14 +345,6 @@ pub enum Command {
     RegisterHook {
         hook: String,
     },
-    /// Discovers one hook already authorized by the installed runtime policy.
-    QueryHook {
-        hook: String,
-    },
-    /// Removes this participant after all invocations referencing it settle.
-    UnregisterHook {
-        hook: String,
-    },
     RunHook {
         hook: String,
         payload: Value,
@@ -291,10 +352,37 @@ pub enum Command {
     HookResult {
         invocation: u64,
     },
-    /// The owner abandons one invocation and releases its broker references.
+    /// Idempotent, owner-scoped invocation with retained results.
+    RunHookOperation {
+        hook: String,
+        payload: Value,
+        operation_id: String,
+        cleanup: bool,
+    },
+    ListApiApprovals {
+        parent: Option<u64>,
+        after: Option<ApiApprovalCursor>,
+        limit: u16,
+    },
+    LookupHook {
+        operation_id: String,
+    },
     CancelHook {
         invocation: u64,
     },
+    ReleaseHook {
+        invocation: u64,
+    },
+}
+
+/// Exclusive, stable ordering key for approved API discovery.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ApiApprovalCursor {
+    pub revision: u64,
+    pub service: String,
+    pub method: String,
+    pub interface_major: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -336,17 +424,27 @@ pub enum Response {
     HookResult {
         proposals: Vec<Proposal>,
     },
-    /// A scoped view of one installed hook. Participant order is significant.
-    HookInfo {
-        hook: String,
-        owner: String,
-        participants: Vec<String>,
-        registered: Vec<String>,
-        timeout_ms: u64,
+    /// Each cleanup participant is attempted in configured order until the deadline.
+    ApiApprovals {
+        revision: u64,
+        approvals: Vec<ApiMethodApproval>,
+        next: Option<ApiApprovalCursor>,
+    },
+    HookCleanupResult {
+        outcomes: Vec<HookOutcome>,
     },
     /// Returned only to the reserved host control endpoint.
     HostLifecycle {
         action: Option<HostLifecycleAction>,
+    },
+    /// Returned only to the reserved host control endpoint.
+    HostPackageActivation {
+        request: Option<Box<HostPackageActivation>>,
+    },
+    /// Bounded activation and barrier status for authorized participants.
+    HostPackageActivationState {
+        pending: bool,
+        started: bool,
     },
     /// Returned only to the reserved host control endpoint.
     LogEvents {
@@ -369,6 +467,12 @@ pub enum HostLogEvent {
         log_path: String,
     },
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HookOutcome {
+    pub participant: String,
+    pub result: Box<Response>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Proposal {
     pub participant: String,

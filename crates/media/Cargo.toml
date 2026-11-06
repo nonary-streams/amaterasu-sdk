@@ -1,5 +1,4 @@
 [package]
-license.workspace = true
 name = "amaterasu-media"
 version.workspace = true
 edition.workspace = true

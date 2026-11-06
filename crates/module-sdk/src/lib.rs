@@ -1,18 +1,32 @@
 //! Safe module-facing API. ABI ownership and panic containment live in `exports`.
+pub mod application_library;
+pub mod audio;
 pub mod capture;
-pub mod composition;
-pub mod control;
+pub mod data_plane;
+pub mod display;
+pub mod encode;
 pub mod exports;
-pub mod hooks;
+pub mod foreground_context;
+pub mod input;
+pub mod media;
 mod native;
-pub use native::NativeBinding;
+pub mod network;
+#[cfg(feature = "network-http")]
+pub mod network_http;
+pub mod operation_api;
+pub mod pairing_authority;
 pub mod processing;
-pub use amaterasu_media::processing::{
-    MEDIA_PROCESSOR_API_V1_SIZE, MEDIA_PROCESSOR_INTERFACE_MAJOR, MEDIA_PROCESSOR_INTERFACE_MINOR,
-    MediaProcessorApi, PROCESS_AFTER_ENCODE, PROCESS_BEFORE_ENCODE, PROCESS_BEFORE_FRAME,
-    PROCESS_DROP, PROCESS_PASS, PROCESS_REPLACE,
-};
-pub use processing::{FrameProcessOutcome, OwnedCpuFrame, ProcessorError};
+pub mod requests;
+pub mod retained_options;
+pub mod retirement;
+pub mod session_presentation;
+pub mod threading;
+pub mod transport;
+pub mod video;
+mod work;
+pub use work::WorkNotifier;
+pub mod virtual_display;
+pub use native::NativeBinding;
 
 pub use amaterasu_abi as abi;
 pub use amaterasu_contracts::encoder::{
@@ -21,32 +35,17 @@ pub use amaterasu_contracts::encoder::{
     SoftwareEncoderOptions, VideoCodec, VideoStreamFormat, validate_min_threads,
     validate_software_options,
 };
-pub use amaterasu_contracts::extensions::ExtensionVersion;
-pub use amaterasu_contracts::extensions::capture::{
-    CaptureBindPlan, CaptureCandidate, CaptureCapability, CapturePlanError,
-    CaptureProviderApproval, CaptureProviderDescriptor, CaptureProviderPolicy,
-    CaptureProviderRecord, CaptureRequirement, CaptureSelection, CaptureSlot,
-    plan_capture_provider,
+pub use amaterasu_contracts::{
+    ApiFieldKind, ApiMethod, ApiPrivilege, ApiSchema, Command, HOST_PACKAGE_BARRIER_SERVICE,
+    HostLifecycleAction, Response, RuntimeHostContext,
 };
-pub use amaterasu_contracts::extensions::configuration::{
-    CONFIGURATION_SERVICE, ExtensionConfigurationRef, ExtensionSettingsCategory,
-    ExtensionSettingsContribution,
-};
-pub use amaterasu_contracts::extensions::encoder::{
-    EncoderBindPlan, EncoderCandidate, EncoderExtensionSelection, EncoderPlanError,
-    EncoderProviderApproval, EncoderProviderDescriptor, EncoderProviderPolicy,
-    EncoderProviderRecord, EncoderRequirement, plan_encoder_provider,
-};
-pub use amaterasu_contracts::extensions::presentation::{
-    ChoiceError, ProviderChoice, ProviderChoiceKind, capture_dropdown_options,
-    encoder_dropdown_options,
-};
-pub use amaterasu_contracts::hooks::{
-    FrameMemory, HookCancelReason, HookDecision, HookEvent, HookMode, HookPoint, HookReply,
-    HookSubject, HookVersion, PixelFormat, VideoCodec as HookVideoCodec,
-};
-pub use amaterasu_contracts::{Command, HostLifecycleAction, Response, RuntimeHostContext};
+pub use amaterasu_extension_api as extension_api;
+pub use amaterasu_media as media_abi;
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 const LOG_EMITTER_CAPACITY: usize = 128;
 const LOG_FLUSH_BATCH: usize = 16;
@@ -74,6 +73,10 @@ pub struct RuntimeClient {
 impl RuntimeClient {
     /// # Safety
     /// The endpoint's runtime must outlive this client and all its calls.
+    /// Its invoke callback and context must support concurrent calls from any
+    /// consumer worker thread. Native interface guards may release a binding on
+    /// the last owning worker; endpoint identity and authorization remain bound
+    /// to this table, never to the calling OS thread.
     pub unsafe fn from_endpoint(endpoint: abi::HostApi) -> Self {
         Self { endpoint }
     }
@@ -83,6 +86,8 @@ impl RuntimeClient {
             command,
             Command::NativeRegister { .. }
                 | Command::NativeBind { .. }
+                | Command::NativeRegisterTyped { .. }
+                | Command::NativeBindTyped { .. }
                 | Command::NativeRelease { .. }
         ) {
             return Err("native control operations require the unsafe native SDK API".into());
@@ -134,11 +139,24 @@ impl RuntimeClient {
         })
     }
 
+    /// Wake a waiting host after publishing a frame or completing asynchronous
+    /// work. Unsupported older runtimes retain their normal polling behavior.
+    pub fn work_notifier(&self) -> WorkNotifier {
+        WorkNotifier::new(self.endpoint)
+    }
+
     /// Creates a bounded nonblocking logger for native workers and its module-
     /// thread drain. Host transport work never runs in the callback.
     pub fn log_emitter(&self) -> (LogEmitter, LogQueue) {
         let (sender, receiver) = mpsc::sync_channel(LOG_EMITTER_CAPACITY);
-        (LogEmitter { sender }, LogQueue { receiver })
+        let stats = Arc::new(LogCounters::default());
+        (
+            LogEmitter {
+                sender,
+                stats: stats.clone(),
+            },
+            LogQueue { receiver, stats },
+        )
     }
 
     /// Requests one fixed host lifecycle action. The host honors it only when
@@ -148,9 +166,10 @@ impl RuntimeClient {
     }
 
     /// Returns the state location chosen by the trusted host for this worker.
-    /// The control-plane runtime exposes it to the state module and, on Linux,
-    /// to audio for its cleanup journal. Callers cannot substitute a JSON
-    /// setting or a package-supplied path.
+    /// The runtime exposes it to modules with the effective
+    /// `amaterasu.host-state-context/1` call grant, as well as the legacy state
+    /// module and Linux audio cleanup. This grant does not expose package
+    /// metadata. Callers cannot substitute a setting or package-supplied path.
     pub fn runtime_state_root(&self) -> ModuleResult<std::path::PathBuf> {
         let Response::Result { payload } = self.send(Command::GetHostContext {})? else {
             return Err("host context request did not return a result".into());
@@ -190,9 +209,67 @@ impl RuntimeClient {
 #[derive(Clone)]
 pub struct LogEmitter {
     sender: SyncSender<PendingLog>,
+    stats: Arc<LogCounters>,
+}
+
+/// A snapshot of local queue outcomes. Acceptance does not guarantee persistence.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LogQueueStats {
+    pub queue_full: u64,
+    pub queue_disconnected: u64,
+    pub host_accepted: u64,
+    pub host_rejected: u64,
+}
+
+#[derive(Default)]
+struct LogCounters {
+    queue_full: AtomicU64,
+    queue_disconnected: AtomicU64,
+    host_accepted: AtomicU64,
+    host_rejected: AtomicU64,
+}
+
+impl LogCounters {
+    fn snapshot(&self) -> LogQueueStats {
+        LogQueueStats {
+            queue_full: self.queue_full.load(Ordering::Relaxed),
+            queue_disconnected: self.queue_disconnected.load(Ordering::Relaxed),
+            host_accepted: self.host_accepted.load(Ordering::Relaxed),
+            host_rejected: self.host_rejected.load(Ordering::Relaxed),
+        }
+    }
+}
+
+fn count_log(counter: &AtomicU64) {
+    let mut previous = counter.load(Ordering::Relaxed);
+    loop {
+        match counter.compare_exchange_weak(
+            previous,
+            previous.saturating_add(1),
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => break,
+            Err(actual) => previous = actual,
+        }
+    }
 }
 
 impl LogEmitter {
+    /// Snapshot shared local loss and host-admission counters.
+    pub fn stats(&self) -> LogQueueStats {
+        self.stats.snapshot()
+    }
+
+    /// Bind a target once for repeated worker log events.
+    pub fn logger(&self, target: &str) -> ModuleResult<Logger> {
+        validate_log_record(target, "")?;
+        Ok(Logger {
+            emitter: self.clone(),
+            target: target.to_owned(),
+        })
+    }
+
     pub fn emit(&self, level: LogLevel, target: &str, message: &str) -> ModuleResult<()> {
         validate_log_record(target, message)?;
         self.sender
@@ -202,9 +279,32 @@ impl LogEmitter {
                 message: message.to_owned(),
             })
             .map_err(|error| match error {
-                TrySendError::Full(_) => "native log queue is full".into(),
-                TrySendError::Disconnected(_) => "native log queue is unavailable".into(),
+                TrySendError::Full(_) => {
+                    count_log(&self.stats.queue_full);
+                    "native log queue is full".into()
+                }
+                TrySendError::Disconnected(_) => {
+                    count_log(&self.stats.queue_disconnected);
+                    "native log queue is unavailable".into()
+                }
             })
+    }
+}
+
+/// A target-bound, nonblocking producer. Clone it for module worker threads.
+#[derive(Clone)]
+pub struct Logger {
+    emitter: LogEmitter,
+    target: String,
+}
+
+impl Logger {
+    pub fn emit(&self, level: LogLevel, message: &str) -> ModuleResult<()> {
+        self.emitter.emit(level, &self.target, message)
+    }
+
+    pub fn stats(&self) -> LogQueueStats {
+        self.emitter.stats()
     }
 }
 
@@ -230,14 +330,28 @@ struct PendingLog {
 /// of events per tick through the generic runtime transport.
 pub struct LogQueue {
     receiver: Receiver<PendingLog>,
+    stats: Arc<LogCounters>,
 }
 
 impl LogQueue {
     pub fn flush(&mut self, runtime: &RuntimeClient) {
+        self.flush_with(|record| runtime.log(record.level, &record.target, &record.message));
+    }
+
+    /// Snapshot shared local loss and host-admission counters.
+    pub fn stats(&self) -> LogQueueStats {
+        self.stats.snapshot()
+    }
+
+    fn flush_with(&mut self, mut send: impl FnMut(PendingLog) -> ModuleResult<()>) {
         for _ in 0..LOG_FLUSH_BATCH {
             match self.receiver.try_recv() {
                 Ok(record) => {
-                    let _ = runtime.log(record.level, &record.target, &record.message);
+                    if send(record).is_ok() {
+                        count_log(&self.stats.host_accepted);
+                    } else {
+                        count_log(&self.stats.host_rejected);
+                    }
                 }
                 Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
             }
@@ -248,6 +362,13 @@ impl LogQueue {
 pub trait ManagedModule: Sized {
     fn start(runtime: RuntimeClient) -> ModuleResult<Self>;
     fn tick(&mut self) -> ModuleResult<()>;
+
+    /// Begin or poll shutdown while dependencies continue receiving ticks.
+    /// Stop admitting new work, release owned effects, then return true. A false
+    /// result keeps the instance and all providers alive for another host tick.
+    fn quiesce(&mut self) -> ModuleResult<bool> {
+        Ok(true)
+    }
 
     fn health(&self) -> ModuleResult<()> {
         Ok(())
@@ -269,12 +390,56 @@ macro_rules! export_module {
             };
             &API
         }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn amaterasu_module_quiesce_v1() -> *const $crate::abi::ModuleQuiesceApi {
+            static API: $crate::abi::ModuleQuiesceApi = $crate::abi::ModuleQuiesceApi {
+                header: $crate::abi::AbiHeader::of::<$crate::abi::ModuleQuiesceApi>(),
+                poll: $crate::exports::quiesce::<$module>,
+            };
+            &API
+        }
     };
 }
 
 #[cfg(test)]
 mod logging_tests {
     use super::{LogLevel, validate_log_record};
+
+    #[test]
+    fn bounded_queue_reports_backpressure_host_errors_and_disconnect() {
+        use super::{LOG_EMITTER_CAPACITY, LOG_FLUSH_BATCH, LogCounters, LogEmitter, LogQueue};
+        use std::sync::{Arc, mpsc};
+        let (sender, receiver) = mpsc::sync_channel(LOG_EMITTER_CAPACITY);
+        let stats = Arc::new(LogCounters::default());
+        let emitter = LogEmitter {
+            sender,
+            stats: stats.clone(),
+        };
+        let mut queue = LogQueue { receiver, stats };
+        let logger = emitter.logger("video.timing").unwrap();
+        assert!(emitter.logger("bad\ntarget").is_err());
+        for _ in 0..LOG_EMITTER_CAPACITY {
+            logger.emit(LogLevel::Info, "frame").unwrap();
+        }
+        assert!(logger.emit(LogLevel::Info, "overflow").is_err());
+        assert_eq!(logger.stats().queue_full, 1);
+        let mut n = 0;
+        queue.flush_with(|record| {
+            assert_eq!(record.target, "video.timing");
+            n += 1;
+            if n == 1 {
+                Err("unavailable".into())
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(n, LOG_FLUSH_BATCH);
+        assert_eq!(queue.stats().host_rejected, 1);
+        assert_eq!(queue.stats().host_accepted, (LOG_FLUSH_BATCH - 1) as u64);
+        drop(queue);
+        assert!(logger.emit(LogLevel::Warning, "disconnected").is_err());
+        assert_eq!(logger.stats().queue_disconnected, 1);
+    }
 
     #[test]
     fn severity_values_match_the_generic_host_transport() {
@@ -294,3 +459,6 @@ mod logging_tests {
         assert!(validate_log_record("module.target", "private\0credential").is_err());
     }
 }
+
+/// Shared binary artwork provider and consumer adapter.
+pub mod artwork_transfer;

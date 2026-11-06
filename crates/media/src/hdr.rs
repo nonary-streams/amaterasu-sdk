@@ -41,13 +41,27 @@ pub struct CaptureApiV1_10 {
     pub color_provenance: unsafe extern "C" fn(*mut c_void, u64, *mut u32) -> Status,
 }
 
+/// Additive video v1.2 prefix; metadata belongs to the caller-owned stream.
+#[repr(C)]
+pub struct VideoApiV1_2 {
+    pub base: amaterasu_abi::NativeInterface,
+    pub receive: unsafe extern "C" fn(*mut c_void, u64, PacketSink) -> Status,
+    pub geometry: unsafe extern "C" fn(*mut c_void, u64, *mut CaptureGeometry) -> Status,
+    pub hdr_metadata: unsafe extern "C" fn(*mut c_void, u64, *mut HdrMetadata) -> Status,
+}
+/// Additive video v1.3 tail. Legacy receive retains its existing semantics.
+/// Timed output carries an independent processing start, or zero when unknown.
+#[repr(C)]
+pub struct VideoApiV1_3 {
+    pub base: VideoApiV1_2,
+    pub receive_timed: unsafe extern "C" fn(*mut c_void, u64, TimedPacketSink) -> Status,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::mem::{offset_of, size_of};
-
     #[test]
-    fn provenance_tail_preserves_v1_9_prefix() {
+    fn hdr_tails_preserve_existing_prefixes() {
         assert_eq!(size_of::<HdrMetadata>(), 32);
         assert_eq!(
             offset_of!(CaptureApiV1_9, hdr_metadata),
@@ -56,6 +70,14 @@ mod tests {
         assert_eq!(
             offset_of!(CaptureApiV1_10, color_provenance),
             size_of::<CaptureApiV1_9>()
+        );
+        assert_eq!(
+            offset_of!(VideoApiV1_2, hdr_metadata),
+            size_of::<VideoApiV1_1>()
+        );
+        assert_eq!(
+            offset_of!(VideoApiV1_3, receive_timed),
+            size_of::<VideoApiV1_2>()
         );
     }
 }

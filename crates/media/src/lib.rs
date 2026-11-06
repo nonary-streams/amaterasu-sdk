@@ -1,4 +1,4 @@
-//! Draft media interfaces. Buffers are borrowed for one synchronous callback.
+//! Draft media interfaces with synchronous borrows and optional explicit GPU leases.
 //! No Rust allocator, collection, or reference crosses a module boundary.
 use amaterasu_abi::{NativeInterface, STATUS_INVALID_ARGUMENT, Status};
 use std::{ffi::c_void, mem::size_of};
@@ -11,26 +11,32 @@ mod control;
 pub use control::*;
 mod clock;
 pub use clock::*;
-mod color;
-pub use color::*;
-mod capture_events;
-pub use capture_events::*;
-mod frame_resource;
-pub use frame_resource::*;
 mod hdr;
 pub use hdr::*;
+mod color;
+pub use color::*;
 mod dmabuf;
 pub use dmabuf::*;
 mod dmabuf_lease;
 pub use dmabuf_lease::*;
+mod capture_events;
+pub use capture_events::*;
+mod frame_resource;
+pub use frame_resource::*;
+mod source_preflight;
+pub use source_preflight::*;
+mod encoder_provider;
+pub use encoder_provider::*;
+mod encoder_input_pool;
+pub use encoder_input_pool::*;
+mod encode_timing;
+pub use encode_timing::*;
 mod codec;
 pub use codec::*;
 mod geometry;
 pub use geometry::*;
 mod transport;
 pub use transport::*;
-pub mod processing;
-pub use processing::*;
 
 pub const INTERFACE_MAJOR: u32 = 1;
 pub const INTERFACE_MINOR: u32 = 0;
@@ -54,6 +60,9 @@ pub const CAPTURE_FRAME_CACHED_REUSE: u32 = 0;
 pub const CAPTURE_FRAME_FRESH: u32 = 1;
 pub const PIXEL_BGRA8: u32 = 1;
 pub const PIXEL_NV12: u32 = 2;
+/// Little-endian 4:2:0 planar Y then interleaved UV. Each ten-bit code occupies
+/// the high ten bits of a u16; the low six bits are zero. Stride is in bytes.
+pub const PIXEL_P010: u32 = 3;
 pub const CODEC_H264: u32 = 1;
 pub const CODEC_HEVC: u32 = 2;
 pub const CODEC_AV1: u32 = 3;
@@ -69,9 +78,33 @@ pub const MEDIA_UNSUPPORTED: Status = 13;
 pub const MEDIA_BACKEND_ERROR: Status = 14;
 pub const MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
 pub const MAX_PACKET_BYTES: usize = 16 * 1024 * 1024;
+/// Maximum assembled access unit and fragment count accepted by the legacy
+/// video forwarding plane. Providers must stay within both limits.
+pub const MAX_VIDEO_ACCESS_UNIT_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_VIDEO_ACCESS_UNIT_FRAGMENTS: usize = 1024;
 
-/// BGRA uses one plane; NV12 uses contiguous Y then interleaved UV planes with
-/// the same stride. Timestamps are microseconds from the producer's stream epoch.
+/// Optional synchronous CPU processing interface, version 1.0.
+pub const CPU_PROCESSOR_INTERFACE_MAJOR: u32 = 1;
+pub const CPU_PROCESSOR_INTERFACE_MINOR: u32 = 0;
+
+/// Transforms one borrowed CPU frame. The input and sink are valid only until
+/// `process` returns; output is valid only until its sink callback returns.
+/// Exactly one callback is required on success. A processor failure before
+/// delivery invokes no callback; a rejected callback status is returned unchanged.
+/// BUSY consumes nothing and may be retried. Sequence and timestamp are
+/// preserved; dimensions, stride, format and pixels may change. Providers must
+/// serialize callbacks, never retain pointers, and never unwind across the ABI.
+#[repr(C)]
+pub struct CpuProcessorApi {
+    pub base: NativeInterface,
+    pub process: unsafe extern "C" fn(*mut c_void, u64, *const CpuFrame, FrameSink) -> Status,
+}
+
+pub const CPU_PROCESSOR_API_V1_0_SIZE: u32 = size_of::<CpuProcessorApi>() as u32;
+
+/// BGRA uses one plane; NV12 and P010 use contiguous Y then interleaved UV
+/// planes with the same byte stride. P010 stores little-endian high-bit-aligned
+/// ten-bit codes. Timestamps are microseconds from the producer's stream epoch.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct CpuFrame {
@@ -113,6 +146,11 @@ pub fn frame_size(width: u32, height: u32, format: u32, stride: u32) -> Result<u
         PIXEL_BGRA8 => (width.checked_mul(4), Some(height)),
         PIXEL_NV12 if width.is_multiple_of(2) && height.is_multiple_of(2) => {
             (Some(width), height.checked_add(height / 2))
+        }
+        PIXEL_P010
+            if width.is_multiple_of(2) && height.is_multiple_of(2) && stride.is_multiple_of(2) =>
+        {
+            (width.checked_mul(2), height.checked_add(height / 2))
         }
         _ => return Err(STATUS_INVALID_ARGUMENT),
     };
@@ -208,6 +246,40 @@ impl PacketSink {
             return status;
         }
         // SAFETY: the caller guarantees callback and packet lifetimes.
+        unsafe { (self.write)(self.context, packet) }
+    }
+}
+
+/// Encoded packet with a separate host-processing start time. The base
+/// timestamp remains the presentation/stream timestamp and must not be
+/// rewritten to represent processing. A nonzero start is in microseconds on
+/// the same host monotonic clock as `host_monotonic_micros`; zero means the
+/// provider cannot report a trustworthy start. All fragments of an access
+/// unit must carry the same processing start and base sequence/timestamp.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TimedEncodedPacket {
+    pub base: EncodedPacket,
+    pub processing_started_host_us: u64,
+}
+
+/// Synchronous borrowed delivery of a timed packet. The sink copies any data
+/// it retains, returns BUSY without accepting it, and must never unwind.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TimedPacketSink {
+    pub context: *mut c_void,
+    pub write: unsafe extern "C" fn(*mut c_void, *const TimedEncodedPacket) -> Status,
+}
+
+impl TimedPacketSink {
+    /// # Safety
+    /// The sink callback/context and packet bytes remain live for this call.
+    pub unsafe fn send(&self, packet: &TimedEncodedPacket) -> Status {
+        if let Err(status) = packet.base.validate() {
+            return status;
+        }
+        // SAFETY: caller guarantees callback and borrowed packet lifetimes.
         unsafe { (self.write)(self.context, packet) }
     }
 }
