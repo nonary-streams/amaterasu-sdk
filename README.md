@@ -1,7 +1,7 @@
 # Amaterasu public SDK
 
 This standalone source snapshot exports the public SDK from Amaterasu core
-commit `66b67d053ccb27ac127d779a76a530e88d71ee8c`, based on public SDK commit
+commit `5aa45d2cc198d60d14b5d3de5717e2740feeb1e4`, based on public SDK commit
 `b6197e6145fb1f1adb67566e512a1210544b213b`. Extension authors can build against
 these libraries without the core source repository.
 

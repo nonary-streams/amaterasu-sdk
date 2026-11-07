@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "core_source_commit": "66b67d053ccb27ac127d779a76a530e88d71ee8c",
+  "core_source_commit": "5aa45d2cc198d60d14b5d3de5717e2740feeb1e4",
   "sdk_base_commit": "b6197e6145fb1f1adb67566e512a1210544b213b",
-  "sdk_parent_commit": "20b39f65f19b4c7fcf900a469605bc1cdb31864b",
+  "sdk_parent_commit": "27f173c92935ad20fdf75dadc4be4a21fb80bc62",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Standalone source SDK snapshot; no publication, signed package, installation or native qualification.",
   "seed_crates": [
@@ -139,7 +139,7 @@
     },
     {
       "path": "crates/contracts/src/lib.rs",
-      "sha256": "0be830d0407fa8d3daa85598e19b733d37b0a393cef7f668ea84677a229e968b",
+      "sha256": "79749fc19ca12d98328ac2bf30f955c15ac025d9e165b47e1ae1ff3a87fc9260",
       "mode": "0o644"
     },
     {
@@ -604,7 +604,7 @@
     },
     {
       "path": "crates/module-sdk/src/lib.rs",
-      "sha256": "8e0f2dde97e269153ac6f7466b6c5bb350db7aa2f5d88d069ac44f3c3888ceb0",
+      "sha256": "37758e520c7d942771587f346627dc0ace3ddae9905f8f452a4a78c280e3f994",
       "mode": "0o644"
     },
     {
@@ -659,7 +659,7 @@
     },
     {
       "path": "crates/module-sdk/src/operation_api.rs",
-      "sha256": "0f5601d69c78d08bb814f6d0ea58c297622b92534d7a78a170a312dfacaf68cc",
+      "sha256": "e55213ba57e7528e3a6f53a1d44ef9829e0cd5fff3d483b5248f85e330e7b7cf",
       "mode": "0o644"
     },
     {
@@ -804,7 +804,7 @@
     },
     {
       "path": "crates/module-sdk/tests/serialized_requests.rs",
-      "sha256": "cd72611584e0dfe76f375cdfed12ea5898f95c805747e19c914e3bad12393487",
+      "sha256": "f417a8063d435108fddc80a6a263fd44a56a86c4b3388ccaa7b8d743c1589609",
       "mode": "0o644"
     },
     {
@@ -919,7 +919,7 @@
     },
     {
       "path": "docs/plugin-apis.md",
-      "sha256": "9aded2e0f1be7246f58f9b5e92951f2b96909e13f6b1f515e21bbda8ee2fefc7",
+      "sha256": "3da5cd551f34be36d96f64d2a1e554c97a1f9706ee4b767c094af686138261d9",
       "mode": "0o644"
     },
     {
@@ -939,7 +939,7 @@
     },
     {
       "path": "docs/web-extension-ui-sdk.md",
-      "sha256": "935e23a943f78b3137f84cd1c0cf71227e35aa277a72daeef2a93618fbf9070d",
+      "sha256": "57ebd59ce18b694fe01708d29a233ae5b0d3164ae4c0bd426e9d9eff963435fb",
       "mode": "0o644"
     },
     {
@@ -1019,7 +1019,7 @@
     },
     {
       "path": "sdk/web/amaterasu-ui.d.ts",
-      "sha256": "1d3f3bd056abba3f3ca338e8f68e1393c50fb707fd460288d0f754efd940ebe8",
+      "sha256": "3d347b74241b3da78053a212e54951474a680a9fb4aa946281956b17e085fde0",
       "mode": "0o644"
     }
   ],
@@ -1029,8 +1029,22 @@
       "scope": "Reusable native capture-provider platform helper; OS details remain at that boundary, outside generic consumer contracts."
     }
   ],
+  "source_bridge": {
+    "base_feature_commit": "9c6ae8dcc546216ff7001a26cac175209ea32041",
+    "core_mainline_sdk_commit": "78f0c845818f2f4c87b5849043e0e191482ce44d",
+    "reviewed_paths": [
+      "crates/contracts/src/lib.rs",
+      "crates/module-sdk/src/lib.rs",
+      "crates/module-sdk/src/operation_api.rs",
+      "crates/module-sdk/tests/serialized_requests.rs",
+      "docs/plugin-apis.md",
+      "docs/web-extension-ui-sdk.md",
+      "sdk/web/amaterasu-ui.d.ts"
+    ],
+    "scope": "Only these seven mainline SDK paths were combined with the reviewed feature source. This source commit is independent of future provider SDK pins."
+  },
   "lockfile": {
-    "seed": "Cargo.lock from the same frozen core commit",
+    "seed": "Cargo.lock from the same frozen core source bridge",
     "resolution": "Pruned offline for the standalone eleven-crate graph; every retained registry version and checksum matches the core lockfile",
     "registry_package_count": 98,
     "registry_resolutions_not_in_core_lock": []
@@ -1040,41 +1054,20 @@
     "nested_standalone_example_manifest_count": 2,
     "all_local_dependency_paths_inside_export": true,
     "unexpected_git_dependencies": 0,
-    "focused_scoped_status_tests": {
-      "passed": 2,
-      "failed": 0
-    },
     "default_tests": {
-      "passed": 304,
+      "passed": 305,
       "failed": 0,
       "ignored": 0
     },
     "all_features_tests": {
-      "passed": 313,
+      "passed": 314,
       "failed": 0,
       "ignored": 0
     },
     "format_check": "cargo fmt --all -- --check passed",
     "clippy_default": "cargo clippy --workspace --all-targets --locked --offline -- -D warnings passed",
     "clippy_all_features": "cargo clippy --workspace --all-targets --all-features --locked --offline -- -D warnings passed",
-    "c_abi": "Five public C11 layout/logging translation units compile with -Wall -Wextra -Werror; logging executable passes",
-    "windows_geometry_lib": {
-      "target": "x86_64-pc-windows-gnu",
-      "toolchain": "isolated official Rust 1.99.1; process-local RUSTC only",
-      "command": "cargo check --target x86_64-pc-windows-gnu -p amaterasu-windows-capture-geometry --lib --locked --offline",
-      "result": "passed; independent Windows features include DXGI Common",
-      "native_hardware_exercised": false
-    },
-    "standalone_remote_session_interface_smoke": {
-      "source_commit": "66b67d053ccb27ac127d779a76a530e88d71ee8c",
-      "native_tests": {
-        "passed": 127,
-        "failed": 0,
-        "ignored": 0
-      },
-      "release_build": "passed against this SDK export",
-      "scope": "Interface smoke only; private provider cleanup follow-up and final native acceptance are qualified separately."
-    },
+    "unchanged_C_and_Windows_geometry_proof": "Public C headers/tests and all Windows geometry source bytes match SDK27f exactly; its five C checks and isolated official Windows --lib proof remain applicable.",
     "platform": "Linux x86_64; Rust 1.99.1 and GCC 16.2.1"
   }
 }

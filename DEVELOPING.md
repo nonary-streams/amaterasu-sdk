@@ -1,7 +1,7 @@
 # Building and consuming the SDK
 
 This snapshot comes from core commit
-`66b67d053ccb27ac127d779a76a530e88d71ee8c` and SDK base
+`5aa45d2cc198d60d14b5d3de5717e2740feeb1e4` and SDK base
 `b6197e6145fb1f1adb67566e512a1210544b213b`. Exported Rust source, standalone
 examples, C headers, C tests and guides retain their source bytes. Only the root
 workspace wrapper, standalone lockfile and export documentation are generated.
