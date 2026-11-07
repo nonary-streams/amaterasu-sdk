@@ -4,7 +4,7 @@
   "sdk_base_commit": "b6197e6145fb1f1adb67566e512a1210544b213b",
   "sdk_parent_commit": "27f173c92935ad20fdf75dadc4be4a21fb80bc62",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
-  "scope": "Standalone source SDK snapshot; no publication, signed package, installation or native qualification.",
+  "scope": "Source SDK snapshot. Repository publication does not establish signed package delivery, installation or native qualification.",
   "seed_crates": [
     "abi",
     "contracts",
