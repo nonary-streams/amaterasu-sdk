@@ -23,8 +23,22 @@ _Static_assert(offsetof(AmaterasuFrameResourceProcessorApi, enumerate_outputs) =
 _Static_assert(sizeof(AmaterasuFrameDescriptor) == 40, "resource descriptor layout");
 _Static_assert(sizeof(AmaterasuCaptureResourceOffer) == 144, "resource offer layout");
 _Static_assert(sizeof(AmaterasuCaptureResourceFrame) == 248, "resource frame layout");
+_Static_assert(sizeof(AmaterasuFrameResourceMetadataFrameV1) == 272, "metadata frame layout");
+_Static_assert(sizeof(AmaterasuFrameMetadataSchemaId) == 24, "metadata schema layout");
+_Static_assert(sizeof(AmaterasuFrameMetadataCapabilityV1) == 32, "metadata capability layout");
+_Static_assert(sizeof(AmaterasuFrameMetadataCapabilitiesApiV1) == 40, "metadata capabilities table layout");
+_Static_assert(offsetof(AmaterasuFrameResourceMetadataFrameV1, frame) == 8, "metadata frame offset");
+_Static_assert(offsetof(AmaterasuCaptureApiV1_13, read_resource_frame_with_metadata) == sizeof(AmaterasuCaptureApiV1_12), "capture metadata tail");
+_Static_assert(offsetof(AmaterasuFrameResourceConsumerApiV1_1, submit_with_metadata) == sizeof(AmaterasuFrameResourceConsumerApi), "consumer metadata tail");
+_Static_assert(offsetof(AmaterasuFrameResourceProcessorApiV1_2, process_with_metadata) == sizeof(AmaterasuFrameResourceProcessorApi), "processor metadata tail");
 _Static_assert(sizeof(AmaterasuFrameColorMetadata) == 24, "frame color metadata layout");
 _Static_assert(sizeof(AmaterasuFrameClockMetadata) == 32, "frame clock metadata layout");
+_Static_assert(offsetof(AmaterasuEncoderApiV1_5, enumerate_resources) == sizeof(AmaterasuEncoderApiV1_4), "encoder v1.4 prefix preserved");
+_Static_assert(sizeof(AmaterasuCudaDeviceCapabilities) == 40, "CUDA offer layout");
+_Static_assert(sizeof(AmaterasuCudaDeviceFrame) == 40, "CUDA frame layout");
+_Static_assert(offsetof(AmaterasuCudaDeviceFrame, device_pointer) == 16, "CUDA pointer offset");
+_Static_assert(sizeof(AmaterasuCudaEventCapabilities) == 16, "CUDA event offer layout");
+_Static_assert(sizeof(AmaterasuCudaEventSync) == 8, "CUDA event layout");
 _Static_assert(sizeof(AmaterasuNativeInterfaceQuery) == 24, "native query layout");
 _Static_assert(sizeof(AmaterasuNativeServiceFactory) == 32, "native factory layout");
 _Static_assert(sizeof(AmaterasuCpuFrame) == 48, "frame layout");
@@ -77,33 +91,36 @@ _Static_assert(offsetof(AmaterasuDmaBufFrameLease, context) == 112, "GPU lease o
 _Static_assert(offsetof(AmaterasuDmaBufFrameLease, retain) == 120, "GPU lease retain");
 _Static_assert(offsetof(AmaterasuDmaBufFrameLease, release) == 128, "GPU lease release");
 _Static_assert(sizeof(AmaterasuDmaBufLeaseSink) == 16, "GPU lease sink");
-_Static_assert(sizeof(AmaterasuGpuProcessorApi) == 48, "GPU processor layout");
-_Static_assert(sizeof(AmaterasuGpuProcessorApiV1_1) == 56, "GPU processor v1.1 layout");
-_Static_assert(sizeof(AmaterasuGpuProcessorApiV1_2) == 64, "GPU processor v1.2 layout");
-_Static_assert(offsetof(AmaterasuGpuProcessorApiV1_2, configure_stream) == sizeof(AmaterasuGpuProcessorApiV1_1), "GPU processor v1.1 prefix preserved");
-_Static_assert(offsetof(AmaterasuGpuProcessorApiV1_1, hdr_metadata) == sizeof(AmaterasuGpuProcessorApi), "GPU processor v1.0 prefix preserved");
-_Static_assert(offsetof(AmaterasuGpuProcessorApi, cancel_dmabuf_leases) == 40, "GPU processor cancel offset");
 _Static_assert(AMATERASU_CAPTURE_API_V1_6_SIZE == 88, "capture v1.6 layout");
 _Static_assert(offsetof(AmaterasuCaptureApiV1_6, read_dmabuf_frame_leased) == 80, "capture lease offset");
 _Static_assert(AMATERASU_ENCODER_API_V1_2_SIZE == 80, "encoder v1.2 layout");
 _Static_assert(offsetof(AmaterasuEncoderApiV1_2, submit_dmabuf_leased) == 64, "encoder lease offset");
 _Static_assert(offsetof(AmaterasuEncoderApiV1_2, cancel_dmabuf_leases) == 72, "encoder lease cancel offset");
+_Static_assert(offsetof(AmaterasuEncoderApiV1_4, gpu_input_ready) == sizeof(AmaterasuEncoderApiV1_3), "encoder readiness preserves timing prefix");
 _Static_assert(sizeof(AmaterasuVideoApi) == 40, "video table layout");
 _Static_assert(sizeof(AmaterasuVideoApiV1_1) == 48, "video v1.1 table layout");
 _Static_assert(offsetof(AmaterasuVideoApiV1_1, geometry) == 40, "video geometry offset");
-_Static_assert(sizeof(AmaterasuAudioFrame) == 56, "audio frame layout");
-_Static_assert(offsetof(AmaterasuAudioFrame, data) == 24, "audio data offset");
+_Static_assert(sizeof(AmaterasuAudioFrame) == 104, "audio frame layout");
+_Static_assert(offsetof(AmaterasuAudioFrame, data) == 72, "audio data offset");
 _Static_assert(sizeof(AmaterasuAudioCaptureApi) == 40, "audio table layout");
-_Static_assert(sizeof(AmaterasuEncodedAudioPacket) == 56, "encoded audio layout");
-_Static_assert(offsetof(AmaterasuEncodedAudioPacket, data) == 24, "encoded audio data offset");
-_Static_assert(offsetof(AmaterasuEncodedAudioPacket, timestamp_us) == 40, "encoded audio timestamp offset");
+_Static_assert(sizeof(AmaterasuAudioProcessorApi) == 56, "audio processor table layout");
+_Static_assert(sizeof(AmaterasuEncodedAudioSourceApi) == 48, "encoded audio source table layout");
+_Static_assert(sizeof(AmaterasuAudioFormatId) == 24, "audio format identity layout");
+_Static_assert(sizeof(AmaterasuAudioUnit) == 120, "audio unit layout");
+_Static_assert(offsetof(AmaterasuAudioUnit, timestamp_us) == 56, "audio unit timestamp offset");
+_Static_assert(offsetof(AmaterasuAudioUnit, payload) == 88, "audio unit payload offset");
+_Static_assert(offsetof(AmaterasuAudioUnit, metadata) == 104, "audio unit metadata offset");
 _Static_assert(sizeof(AmaterasuAudioEncoderApi) == 56, "audio encoder table layout");
 _Static_assert(offsetof(AmaterasuAudioEncoderApi, submit) == 32, "audio encoder submit offset");
 _Static_assert(offsetof(AmaterasuAudioEncoderApi, receive) == 40, "audio encoder receive offset");
+_Static_assert(_Generic(((AmaterasuAudioEncoderApi *)0)->receive,
+    AmaterasuStatus (*)(void *, uint64_t, AmaterasuAudioUnitSink): 1, default: 0), "audio encoder unit signature");
 _Static_assert(offsetof(AmaterasuAudioEncoderApi, drain) == 48, "audio encoder drain offset");
 _Static_assert(sizeof(AmaterasuMediaTransportApi) == 56, "media transport table layout");
 _Static_assert(offsetof(AmaterasuMediaTransportApi, submit_video) == 32, "transport video offset");
 _Static_assert(offsetof(AmaterasuMediaTransportApi, submit_audio) == 40, "transport audio offset");
+_Static_assert(_Generic(((AmaterasuMediaTransportApi *)0)->submit_audio,
+    AmaterasuStatus (*)(void *, uint64_t, const AmaterasuAudioUnit *): 1, default: 0), "transport audio unit signature");
 _Static_assert(offsetof(AmaterasuMediaTransportApi, drain) == 48, "transport drain offset");
 #endif
 
@@ -113,3 +130,22 @@ _Static_assert(offsetof(AmaterasuControlMessage, sequence) == 32, "control seque
 _Static_assert(sizeof(AmaterasuControlTransportApi) == 48, "control API layout");
 _Static_assert(offsetof(AmaterasuControlTransportApi, send) == 32, "control send layout");
 _Static_assert(offsetof(AmaterasuControlTransportApi, receive) == 40, "control receive layout");
+
+_Static_assert(offsetof(AmaterasuFrameProcessorApi, base) == 0, "frame processor resource prefix");
+_Static_assert(sizeof(AmaterasuFrameProcessorApi) == sizeof(AmaterasuFrameResourceProcessorApi) + 3 * sizeof(void *), "complete frame processor layout");
+
+_Static_assert(sizeof(AmaterasuCaptureFrameTimingV1) == 16, "capture timing record");
+_Static_assert(offsetof(AmaterasuCaptureApiV1_12, base) == 0, "capture v1.12 prefix");
+_Static_assert(offsetof(AmaterasuCaptureApiV1_12, frame_timing) == sizeof(AmaterasuCaptureApiV1_11), "preflight prefix preserved");
+#if UINTPTR_MAX == UINT64_MAX
+_Static_assert(sizeof(AmaterasuVideoFormatId) == 24, "video format ID layout");
+_Static_assert(sizeof(AmaterasuNegotiatedVideoUnit) == 176, "video unit layout");
+_Static_assert(offsetof(AmaterasuNegotiatedVideoUnit, clock) == 120, "video unit clock offset");
+_Static_assert(offsetof(AmaterasuNegotiatedVideoUnit, data) == 160, "video unit data offset");
+_Static_assert(sizeof(AmaterasuNegotiatedVideoApi) == 40, "video unit table layout");
+_Static_assert(sizeof(AmaterasuNegotiatedVideoTransportApi) == 48, "video transport table layout");
+_Static_assert(sizeof(AmaterasuVideoFramingApi) == 40, "video framing table layout");
+_Static_assert(sizeof(AmaterasuVideoFecBlock) == 16, "video FEC plan block layout");
+_Static_assert(sizeof(AmaterasuVideoFramingLimits) == 48, "video framing limits layout");
+_Static_assert(sizeof(AmaterasuVideoFramePlan) == 112, "video frame plan layout");
+#endif

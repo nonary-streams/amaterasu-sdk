@@ -30,24 +30,62 @@ extern "C" {
 #define AMATERASU_VIDEO_ENCODER_CONTRACT "amaterasu.video-encoder.native/1"
 #define AMATERASU_ENCODER_PROVIDER_CONTRACT "amaterasu.encoder-provider.native/1"
 #define AMATERASU_FRAME_RESOURCE_CONSUMER_CONTRACT "amaterasu.frame-resource-consumer.native/1"
+#define AMATERASU_FRAME_PROCESSOR_CONTRACT "amaterasu.frame-processor.native/1"
 #define AMATERASU_FRAME_RESOURCE_PROCESSOR_CONTRACT "amaterasu.frame-resource-processor.native/1"
 #define AMATERASU_CPU_FRAME_PROCESSOR_CONTRACT "amaterasu.cpu-frame-processor.native/1"
-#define AMATERASU_GPU_FRAME_PROCESSOR_CONTRACT "amaterasu.gpu-frame-processor.native/1"
 #define AMATERASU_AUDIO_CAPTURE_CONTRACT "amaterasu.audio-capture.native/1"
 #define AMATERASU_AUDIO_ENCODER_CONTRACT "amaterasu.audio-encoder.native/1"
+#define AMATERASU_ENCODED_AUDIO_SOURCE_CONTRACT "amaterasu.encoded-audio-source.native/1"
+#define AMATERASU_AUDIO_PROCESSOR_CONTRACT "amaterasu.audio-processor.native/1"
 #define AMATERASU_PCM_F32 1
 #define AMATERASU_PCM_I16 2
 #define AMATERASU_AUDIO_DISCONTINUITY 1
 #define AMATERASU_AUDIO_SILENT 2
 #define AMATERASU_AUDIO_TIMESTAMP_ESTIMATED 4
-#define AMATERASU_CODEC_OPUS 2
-#define AMATERASU_AUDIO_PACKET_DISCONTINUITY 1
-#define AMATERASU_AUDIO_PACKET_EOS 2
 
-/* Interleaved little-endian initialized PCM, at most 100 ms per callback. Silent packets
- * contain zero samples. Timestamps are stream-relative microseconds. */
+/* Format-neutral unit delivery. IDs must be negotiated before use. */
+#define AMATERASU_AUDIO_UNIT_DISCONTINUITY 1
+#define AMATERASU_AUDIO_UNIT_END 2
+#define AMATERASU_AUDIO_UNIT_MAX_PAYLOAD (1024u * 1024u)
+#define AMATERASU_AUDIO_UNIT_MAX_METADATA (64u * 1024u)
+#define AMATERASU_AUDIO_FORMAT_STANDARD_NAMESPACE 1u
+#define AMATERASU_AUDIO_FORMAT_OPUS 2u
+#define AMATERASU_AUDIO_FORMAT_VERSION 1u
 typedef struct {
-    uint32_t sample_rate, channels, format, frames, flags;
+    uint64_t namespace_id, value, version;
+} AmaterasuAudioFormatId;
+typedef struct {
+    AmaterasuAudioFormatId format, metadata_schema;
+    uint32_t flags;
+    uint64_t timestamp_us, duration_us, sequence, generation;
+    AmaterasuBorrowedBytes payload, metadata;
+} AmaterasuAudioUnit;
+typedef struct {
+    void *context;
+    AmaterasuStatus (*write)(void *context, const AmaterasuAudioUnit *unit);
+} AmaterasuAudioUnitSink;
+
+/* Drain stops new input and eventually emits an END unit after queued data. */
+typedef struct {
+    AmaterasuNativeInterface base;
+    AmaterasuStatus (*receive)(void *context, uint64_t stream, AmaterasuAudioUnitSink sink);
+    AmaterasuStatus (*drain)(void *context, uint64_t stream);
+} AmaterasuEncodedAudioSourceApi;
+
+/* Standard samples are little-endian; planar buffers contain contiguous channel planes.
+ * Custom sample formats and packing are defined by their negotiated identifiers. */
+#define AMATERASU_AUDIO_PCM_F32 1u
+#define AMATERASU_AUDIO_PCM_I16 2u
+#define AMATERASU_AUDIO_PCM_I24 3u
+#define AMATERASU_AUDIO_PCM_I32 4u
+#define AMATERASU_AUDIO_PCM_F64 5u
+#define AMATERASU_AUDIO_PACKING_INTERLEAVED 1u
+#define AMATERASU_AUDIO_PACKING_PLANAR 2u
+typedef struct {
+    uint32_t sample_rate, channels;
+    AmaterasuAudioFormatId format;
+    uint32_t sample_bytes, frames, flags;
+    AmaterasuAudioFormatId packing;
     const uint8_t *data;
     size_t len;
     uint64_t timestamp_us, sequence;
@@ -63,30 +101,23 @@ typedef struct {
     AmaterasuStatus (*read_audio)(void *context, uint64_t stream, AmaterasuAudioSink sink);
 } AmaterasuAudioCaptureApi;
 
-/* One complete Opus packet. frames counts decoded samples per channel at 48 kHz.
- * Data is borrowed only during the callback. EOS has flags=2, frames=0, len=0.
- * Nonterminal packets have 120..5760 frames in multiples of 120, 1..8 channels,
- * and at most 65536 bytes. Mapping/order are negotiated through the control API. */
+/* Receive yields at most one frame; after drain, CLOSED means output is exhausted. */
 typedef struct {
-    uint32_t codec, flags, sample_rate, channels, frames;
-    const uint8_t *data;
-    size_t len;
-    uint64_t timestamp_us, sequence;
-} AmaterasuEncodedAudioPacket;
-
-typedef struct {
-    void *context;
-    AmaterasuStatus (*write)(void *context, const AmaterasuEncodedAudioPacket *packet);
-} AmaterasuAudioPacketSink;
+    AmaterasuNativeInterface base;
+    AmaterasuStatus (*submit)(void *context, uint64_t stream, const AmaterasuAudioFrame *frame);
+    AmaterasuStatus (*receive)(void *context, uint64_t stream, AmaterasuAudioSink sink);
+    AmaterasuStatus (*drain)(void *context, uint64_t stream);
+} AmaterasuAudioProcessorApi;
 
 typedef struct {
     AmaterasuNativeInterface base;
     /* OK accepts all input samples; BUSY accepts none. */
     AmaterasuStatus (*submit)(void *context, uint64_t stream, const AmaterasuAudioFrame *frame);
     /* Rejected sink delivery retains the same packet for retry. */
-    AmaterasuStatus (*receive)(void *context, uint64_t stream, AmaterasuAudioPacketSink sink);
+    AmaterasuStatus (*receive)(void *context, uint64_t stream, AmaterasuAudioUnitSink sink);
     AmaterasuStatus (*drain)(void *context, uint64_t stream);
 } AmaterasuAudioEncoderApi;
+
 
 /* CPU bytes are borrowed only during submit or a synchronous frame callback.
  * NV12/P010 are contiguous Y then UV with equal byte stride and even dimensions.
@@ -174,27 +205,6 @@ typedef struct {
     void *context;
     AmaterasuStatus (*write)(void *context, const AmaterasuDmaBufFrameLease *lease, uint32_t freshness);
 } AmaterasuDmaBufLeaseSink;
-
-/* Optional synchronous GPU transform. Input/output leases are borrowed;
- * retain explicitly for later use. On OK call the sink exactly once preserving
- * timestamp, sequence, and the supplied freshness. Propagate sink rejection unchanged. BUSY before
- * delivery consumes nothing. No callback may happen after process returns.
- * Processing cannot mutate input pixels and must honor all GPU fences. Finish
- * borrowed input reads before return or retain a separate reference and release
- * it after GPU completion/with a completion fence. Pending output writes require
- * acquire fences. The caller releasing its reference does not retire processor
- * work; the processor owns that independently retained reference. */
-#define AMATERASU_GPU_PROCESSOR_INTERFACE_MAJOR 1u
-#define AMATERASU_GPU_PROCESSOR_INTERFACE_MINOR 0u
-typedef struct {
-    AmaterasuNativeInterface base;
-    AmaterasuStatus (*process)(void *context, uint64_t stream, const AmaterasuDmaBufFrameLease *lease, uint32_t freshness, AmaterasuDmaBufLeaseSink sink);
-    /* Stop stream permanently; synchronously retire all retained input/output
-     * references and completion fences before return. May block on vendor/GPU
-     * work. Source bindings must remain live throughout cancellation. */
-    void (*cancel_dmabuf_leases)(void *context, uint64_t stream);
-} AmaterasuGpuProcessorApi;
-#define AMATERASU_GPU_PROCESSOR_API_V1_0_SIZE ((uint32_t)sizeof(AmaterasuGpuProcessorApi))
 
 /* H264/HEVC bytes are Annex B; AV1 bytes are one OBU temporal unit. EOS has flags=2, len=0, no payload.
  * When open selects packet_boundaries=true, flag 4 marks the last fragment of
@@ -462,6 +472,48 @@ typedef struct {
     void *context;
     AmaterasuStatus (*write)(void *, const AmaterasuCaptureResourceFrame *);
 } AmaterasuCaptureResourceFrameSink;
+/* AFM1 is a bounded pointer-free metadata envelope. Schema IDs are triples;
+ * value 4 identifies the bundle in EncoderFrameOptionsV1.side_data_schema.
+ * Values 1 and 2 identify raw complete ITU-T T.35 HDR10+/HDR Vivid payloads,
+ * not codec-wrapped units. Schema identities are interpreted in their context. */
+#define AMATERASU_ENCODER_SCHEMA_FRAME_METADATA_BUNDLE 4u
+#define AMATERASU_FRAME_METADATA_BUNDLE_VERSION 1u
+#define AMATERASU_FRAME_METADATA_MAX_ITEMS 16u
+#define AMATERASU_FRAME_METADATA_MAX_ITEM_BYTES (16u * 1024u)
+#define AMATERASU_FRAME_METADATA_MAX_BUNDLE_BYTES (64u * 1024u)
+#define AMATERASU_FRAME_METADATA_ITEM_REQUIRED 1u
+#define AMATERASU_FRAME_METADATA_OWNER_ENCODER 1u
+#define AMATERASU_FRAME_METADATA_OWNER_FRAMER 2u
+#define AMATERASU_FRAME_METADATA_SCHEMA_HDR10PLUS_T35 1u
+#define AMATERASU_FRAME_METADATA_SCHEMA_HDR_VIVID_T35 2u
+#define AMATERASU_FRAME_METADATA_CAP_FORWARD 1u
+#define AMATERASU_FRAME_METADATA_CAP_APPLY 2u
+#define AMATERASU_FRAME_METADATA_CAPABILITIES_CONTRACT "amaterasu.frame-metadata-capabilities.native/1"
+typedef struct { uint64_t namespace_id, value, schema; } AmaterasuFrameMetadataSchemaId;
+typedef struct { AmaterasuFrameMetadataSchemaId schema; uint32_t operations, reserved; } AmaterasuFrameMetadataCapabilityV1;
+typedef struct { void *context; AmaterasuStatus (*write)(void *, const AmaterasuFrameMetadataCapabilityV1 *); } AmaterasuFrameMetadataCapabilitySinkV1;
+/* Enumerates session-scoped capability claims synchronously; trusted
+ * composition, not the provider, chooses owner. Generations are nonzero. */
+typedef struct {
+    AmaterasuNativeInterface base;
+    AmaterasuStatus (*enumerate)(void *, uint64_t, AmaterasuFrameMetadataCapabilitySinkV1, uint64_t *generation);
+} AmaterasuFrameMetadataCapabilitiesApiV1;
+#define AMATERASU_FRAME_METADATA_CAPABILITIES_API_V1_SIZE ((uint32_t)sizeof(AmaterasuFrameMetadataCapabilitiesApiV1))
+#define AMATERASU_CAPTURE_METADATA_INTERFACE_MINOR 13u
+#define AMATERASU_FRAME_RESOURCE_CONSUMER_METADATA_MINOR 1u
+#define AMATERASU_FRAME_RESOURCE_PROCESSOR_METADATA_MINOR 2u
+/* metadata is borrowed only for this synchronous call. Retaining frame does
+ * not retain it: copy the validated bounded envelope before callback return. */
+typedef struct {
+    uint32_t size, version;
+    AmaterasuCaptureResourceFrame frame;
+    AmaterasuBorrowedBytes metadata;
+} AmaterasuFrameResourceMetadataFrameV1;
+typedef struct {
+    void *context;
+    AmaterasuStatus (*write)(void *, const AmaterasuFrameResourceMetadataFrameV1 *);
+} AmaterasuFrameResourceMetadataSinkV1;
+#define AMATERASU_FRAME_RESOURCE_METADATA_FRAME_V1_SIZE ((uint32_t)sizeof(AmaterasuFrameResourceMetadataFrameV1))
 /* Enumeration is synchronous and returns a nonzero generation even for an
  * empty list. Selection uses that exact generation/ID; stale or unavailable
  * returns UNSUPPORTED without changing the prior selection. Capability changes
@@ -504,6 +556,23 @@ typedef struct {
 } AmaterasuFrameResourceProcessorApi;
 #define AMATERASU_FRAME_RESOURCE_CONSUMER_API_V1_0_SIZE ((uint32_t)sizeof(AmaterasuFrameResourceConsumerApi))
 #define AMATERASU_FRAME_RESOURCE_PROCESSOR_API_V1_0_SIZE ((uint32_t)sizeof(AmaterasuFrameResourceProcessorApi))
+
+
+/* Optional additive tails. The selected trusted composition fixes one owner
+ * and schema policy; a provider's envelope is never authority for that choice.
+ * Non-OK consumes neither frame nor metadata. Cancel retires both; async users
+ * copy metadata independently of a retained frame. Processor output preserves
+ * session, submission, source/generations, timestamp and clock identity. */
+typedef struct {
+    AmaterasuFrameResourceConsumerApi base;
+    AmaterasuStatus (*submit_with_metadata)(void *, uint64_t, const AmaterasuFrameResourceMetadataFrameV1 *, uint32_t);
+} AmaterasuFrameResourceConsumerApiV1_1;
+typedef struct {
+    AmaterasuFrameResourceProcessorApi base;
+    AmaterasuStatus (*process_with_metadata)(void *, uint64_t, const AmaterasuFrameResourceMetadataFrameV1 *, AmaterasuFrameResourceMetadataSinkV1);
+} AmaterasuFrameResourceProcessorApiV1_2;
+#define AMATERASU_FRAME_RESOURCE_CONSUMER_API_V1_1_SIZE ((uint32_t)sizeof(AmaterasuFrameResourceConsumerApiV1_1))
+#define AMATERASU_FRAME_RESOURCE_PROCESSOR_API_V1_2_SIZE ((uint32_t)sizeof(AmaterasuFrameResourceProcessorApiV1_2))
 #undef AMATERASU_CAPTURE_V1_4_FIELDS
 #undef AMATERASU_CAPTURE_V1_3_FIELDS
 #undef AMATERASU_CAPTURE_V1_2_FIELDS
@@ -574,6 +643,52 @@ typedef struct {
     AmaterasuStatus (*encode_timing)(void *, uint64_t, AmaterasuEncodeTimingSnapshotV1 *);
 } AmaterasuEncoderApiV1_3;
 #define AMATERASU_ENCODER_API_V1_3_SIZE ((uint32_t)sizeof(AmaterasuEncoderApiV1_3))
+/* Advisory GPU input readiness; the query reserves nothing and does not
+ * consume output. Submit can still return BUSY after an OK result. */
+#define AMATERASU_ENCODER_GPU_READINESS_INTERFACE_MINOR 4u
+typedef struct {
+    AmaterasuEncoderApiV1_3 base;
+    AmaterasuStatus (*gpu_input_ready)(void *, uint64_t);
+} AmaterasuEncoderApiV1_4;
+#define AMATERASU_ENCODER_API_V1_4_SIZE ((uint32_t)sizeof(AmaterasuEncoderApiV1_4))
+/* v1.5 frame-resource consumer operations for an encoder session, with the
+ * semantics of AmaterasuFrameResourceConsumerApi configure and submit. OK
+ * retains for asynchronous work and releases only after it completed (or with
+ * the negotiated completion object); other results retain nothing.
+ * cancel_dmabuf_leases also retires every retained resource reference. */
+#define AMATERASU_ENCODER_RESOURCE_INTERFACE_MINOR 5u
+typedef struct {
+    AmaterasuEncoderApiV1_4 base;
+    AmaterasuStatus (*enumerate_resources)(void *, uint64_t, AmaterasuCaptureResourceOfferSink, uint64_t *generation);
+    AmaterasuStatus (*configure_resource)(void *, uint64_t, uint64_t consumer_generation, uint64_t consumer_id, uint64_t producer_generation, const AmaterasuCaptureResourceOffer *producer_offer);
+    AmaterasuStatus (*submit_resource)(void *, uint64_t, const AmaterasuCaptureResourceFrame *, uint32_t flags);
+} AmaterasuEncoderApiV1_5;
+#define AMATERASU_ENCODER_API_V1_5_SIZE ((uint32_t)sizeof(AmaterasuEncoderApiV1_5))
+
+/* NVIDIA CUDA vendor schema (namespace UUID below): frames in pitch-linear
+ * device memory of the primary CUDA context of the device named by UUID,
+ * ordered by a CUDA event recorded after the last write. The producer does not
+ * record it again while a reference is retained, so a consumer holding one may
+ * enqueue cuStreamWaitEvent any time before release; otherwise before submit
+ * returns. v1 completion is SYNC_NONE: release only after reads completed. */
+#define AMATERASU_CUDA_RESOURCE_NAMESPACE \
+    {0x6a, 0x8e, 0x2f, 0x41, 0x93, 0x0c, 0x4d, 0x57, 0xa1, 0x7b, 0x3c, 0x58, 0xe2, 0x19, 0xd4, 0x06}
+#define AMATERASU_FRAME_RESOURCE_CUDA_DEVICE (AMATERASU_FRAME_RESOURCE_VENDOR_BASE | 1u)
+#define AMATERASU_FRAME_SYNC_CUDA_EVENT (AMATERASU_FRAME_SYNC_VENDOR_BASE | 1u)
+#define AMATERASU_CUDA_RESOURCE_VERSION 1u
+/* Packed 32-bit little endian: R bits 0-9, G 10-19, B 20-29 (DRM ABGR2101010). */
+#define AMATERASU_CUDA_FORMAT_X2B10G10R10 1u
+typedef struct {
+    uint8_t device_uuid[16];
+    uint32_t format, min_width, max_width, min_height, max_height, reserved;
+} AmaterasuCudaDeviceCapabilities;
+typedef struct {
+    uint8_t device_uuid[16];
+    uint64_t device_pointer;
+    uint32_t pitch, format, width, height;
+} AmaterasuCudaDeviceFrame;
+typedef struct { uint8_t device_uuid[16]; } AmaterasuCudaEventCapabilities;
+typedef struct { void *event; } AmaterasuCudaEventSync;
 #define AMATERASU_ENCODER_API_V1_0_SIZE ((uint32_t)sizeof(AmaterasuEncoderApi))
 #define AMATERASU_ENCODER_API_V1_1_SIZE ((uint32_t)sizeof(AmaterasuEncoderApiV1_1))
 typedef struct {
@@ -597,14 +712,14 @@ typedef struct {
 
 /* The trusted control caller must authorize the peer and negotiate the profile.
  * The provider enforces ownership; it does not authenticate peers. Submit one
- * complete H.264 Annex B access unit or one negotiated Opus packet per call.
+ * complete H.264 Annex B access unit or one negotiated audio unit per call.
  * Bytes are borrowed for each call. OK means queued, never peer delivery.
  * BUSY accepts nothing and consumes no packet indices/nonces. Drain stops input;
  * control status reports completion of local queue flushing, not peer receipt. */
 typedef struct {
     AmaterasuNativeInterface base;
     AmaterasuStatus (*submit_video)(void *context, uint64_t stream, const AmaterasuEncodedPacket *packet);
-    AmaterasuStatus (*submit_audio)(void *context, uint64_t stream, const AmaterasuEncodedAudioPacket *packet);
+    AmaterasuStatus (*submit_audio)(void *context, uint64_t stream, const AmaterasuAudioUnit *packet);
     AmaterasuStatus (*drain)(void *context, uint64_t stream);
 } AmaterasuMediaTransportApi;
 /* v1.1 preserves the entire v1.0 prefix. 0 start is unknown and must not be
@@ -636,41 +751,91 @@ typedef struct {
     AmaterasuStatus (*send)(void *context, uint64_t stream, const AmaterasuControlMessage *message);
     AmaterasuStatus (*receive)(void *context, uint64_t stream, AmaterasuControlMessageSink sink);
 } AmaterasuControlTransportApi;
+/* Negotiated video unit/framing contracts are separate from legacy VideoApi
+ * and MediaTransportApi. Codec IDs match the encoder-provider triple; zero is
+ * invalid. Buffers are borrowed synchronously and BUSY consumes nothing. */
+#define AMATERASU_NEGOTIATED_VIDEO_CONTRACT "amaterasu.video-unit.native/1"
+#define AMATERASU_NEGOTIATED_VIDEO_TRANSPORT_CONTRACT "amaterasu.video-unit-transport.native/1"
+#define AMATERASU_VIDEO_FRAMING_CONTRACT "amaterasu.video-framing.native/1"
+#define AMATERASU_VIDEO_UNIT_VERSION 1u
+#define AMATERASU_VIDEO_UNIT_KEYFRAME 1u
+#define AMATERASU_VIDEO_UNIT_DISCONTINUITY 2u
+#define AMATERASU_VIDEO_UNIT_END_OF_STREAM 4u
+#define AMATERASU_VIDEO_FRAME_MAX_BLOCKS 4u
+#define AMATERASU_VIDEO_FRAME_MAX_DATAGRAMS 2048u
+#define AMATERASU_VIDEO_FRAME_RECORD_START 1u
+#define AMATERASU_VIDEO_FRAME_CRITICAL_PREFIX 2u
+typedef struct { uint64_t namespace_id, value, schema; } AmaterasuVideoFormatId;
+typedef struct {
+    uint32_t size, version;
+    uint64_t stream, generation, offer_id;
+    AmaterasuVideoFormatId codec, framing;
+    uint64_t access_unit_id, submission_id, source_id, config_generation, timestamp_us;
+    AmaterasuFrameClockMetadata clock;
+    uint32_t flags, reserved;
+    AmaterasuBorrowedBytes data;
+} AmaterasuNegotiatedVideoUnit;
+typedef struct {
+    void *context;
+    AmaterasuStatus (*write)(void *, const AmaterasuNegotiatedVideoUnit *);
+} AmaterasuNegotiatedVideoUnitSink;
+typedef struct {
+    AmaterasuNativeInterface base;
+    AmaterasuStatus (*receive)(void *, uint64_t, AmaterasuNegotiatedVideoUnitSink);
+} AmaterasuNegotiatedVideoApi;
+typedef struct {
+    AmaterasuNativeInterface base;
+    AmaterasuStatus (*submit)(void *, uint64_t, const AmaterasuNegotiatedVideoUnit *);
+    AmaterasuStatus (*drain)(void *, uint64_t);
+} AmaterasuNegotiatedVideoTransportApi;
+typedef struct {
+    uint32_t first_data_shard, data_shards, parity_shards, percentage;
+} AmaterasuVideoFecBlock;
+typedef struct {
+    uint32_t size, version, packet_size, crypto_overhead, network_overhead;
+    uint32_t allowed_extensions, max_datagrams, max_queue_bytes;
+    uint32_t min_parity_shards, max_fec_percentage;
+    uint64_t max_wire_bytes;
+} AmaterasuVideoFramingLimits;
+typedef struct {
+    uint32_t size, version;
+    AmaterasuBorrowedBytes framed_bytes, record_starts;
+    uint32_t critical_prefix_shards, block_count;
+    AmaterasuVideoFecBlock blocks[AMATERASU_VIDEO_FRAME_MAX_BLOCKS];
+} AmaterasuVideoFramePlan;
+typedef struct {
+    void *context;
+    AmaterasuStatus (*write)(void *, const AmaterasuVideoFramePlan *);
+} AmaterasuVideoFramePlanSink;
+/* The host validates plan bounds and negotiated flags, then owns FEC,
+ * sequence numbers, encryption and network delivery. The plan callback
+ * must not retain pointers or commit rate state; retry after BUSY is safe. */
+typedef struct {
+    AmaterasuNativeInterface base;
+    AmaterasuStatus (*plan)(void *, uint64_t, const AmaterasuNegotiatedVideoUnit *,
+                            const AmaterasuVideoFramingLimits *, AmaterasuVideoFramePlanSink);
+} AmaterasuVideoFramingApi;
+
 /* HDR metadata is tied to a completed capture presentation. Fields: RGB xy,
  * white xy (1/50000), max nits, min 1/10000 nit, MaxCLL and MaxFALL. */
 typedef struct { uint32_t enabled; uint16_t fields[12]; uint32_t reserved; } AmaterasuHdrMetadata;
-/* GPU processor v1.1: output metadata, independent of the capture source.
- * OK initializes output (enabled=0 is SDR); UNSUPPORTED is unspecified.
- * This query must not start GPU work. The complete v1.0 prefix is preserved. */
-#define AMATERASU_GPU_PROCESSOR_METADATA_INTERFACE_MINOR 1u
+
+/* Canonical capture-independent processing. Bind this exact contract; input
+ * and output resources and synchronization are independently negotiated. A
+ * processing callback immediately offers pending GPU work with an acquire
+ * dependency and retains every input until its reads complete. No compatibility
+ * route or implicit capture/encoder implementation is supplied. */
+#define AMATERASU_FRAME_PROCESSOR_INTERFACE_MAJOR 1u
+#define AMATERASU_FRAME_PROCESSOR_INTERFACE_MINOR 0u
+#define AMATERASU_FRAME_PROCESSOR_MAX_CONFIGURATION_BYTES 16384u
 typedef struct {
-    AmaterasuGpuProcessorApi base;
-    AmaterasuStatus (*hdr_metadata)(void *, uint64_t, AmaterasuHdrMetadata *);
-} AmaterasuGpuProcessorApiV1_1;
-#define AMATERASU_GPU_PROCESSOR_API_V1_1_SIZE ((uint32_t)sizeof(AmaterasuGpuProcessorApiV1_1))
-/* v1.2 borrows at most 16384 bytes of UTF-8 JSON synchronously. Configure once
- * before metadata or frames; the provider copies anything retained. Cancel
- * retires the configured stream. An unsupported provider may reject it. */
-#define AMATERASU_GPU_PROCESSOR_MAX_CONFIGURATION_BYTES 16384u
-#define AMATERASU_GPU_PROCESSOR_CONFIGURATION_INTERFACE_MINOR 2u
-typedef struct {
-    AmaterasuGpuProcessorApiV1_1 base;
+    AmaterasuFrameResourceProcessorApi base;
     AmaterasuStatus (*configure_stream)(void *, uint64_t, const uint8_t *, size_t);
-} AmaterasuGpuProcessorApiV1_2;
-#define AMATERASU_GPU_PROCESSOR_API_V1_2_SIZE ((uint32_t)sizeof(AmaterasuGpuProcessorApiV1_2))
-/* v1.3 atomically replaces settings of an active configured stream. JSON has
- * the same size and borrowing rules as configure_stream. Failure leaves the
- * previous settings active and does not cancel the stream, except that an
- * internal error is fatal: stop frame submission, retire downstream leases,
- * then cancel the stream. Calls are serialized
- * with processing and retirement. Updates must preserve the negotiated output
- * format and HDR metadata. */
-#define AMATERASU_GPU_PROCESSOR_UPDATE_INTERFACE_MINOR 3u
-typedef struct {
-    AmaterasuGpuProcessorApiV1_2 base;
     AmaterasuStatus (*update_stream)(void *, uint64_t, const uint8_t *, size_t);
-} AmaterasuGpuProcessorApiV1_3;
-#define AMATERASU_GPU_PROCESSOR_API_V1_3_SIZE ((uint32_t)sizeof(AmaterasuGpuProcessorApiV1_3))
+    AmaterasuStatus (*hdr_metadata)(void *, uint64_t, AmaterasuHdrMetadata *);
+} AmaterasuFrameProcessorApi;
+#define AMATERASU_FRAME_PROCESSOR_API_SIZE ((uint32_t)sizeof(AmaterasuFrameProcessorApi))
+
 typedef struct {
     AmaterasuCaptureApiV1_8 base;
     AmaterasuStatus (*hdr_metadata)(void *, uint64_t, AmaterasuHdrMetadata *);
@@ -697,6 +862,25 @@ typedef struct {
     AmaterasuStatus (*source_preflight)(void *, AmaterasuBorrowedBytes, AmaterasuReplySink);
 } AmaterasuCaptureApiV1_11;
 #define AMATERASU_CAPTURE_API_V1_11_SIZE ((uint32_t)sizeof(AmaterasuCaptureApiV1_11))
+/* Optional per-presentation processing start on the host monotonic clock.
+ * Zero is unknown; every earlier capture prefix, including preflight, is intact. */
+#define AMATERASU_CAPTURE_FRAME_TIMING_INTERFACE_MINOR 12u
+typedef struct {
+    uint64_t sequence;
+    uint64_t processing_started_host_us;
+} AmaterasuCaptureFrameTimingV1;
+typedef struct {
+    AmaterasuCaptureApiV1_11 base;
+    AmaterasuStatus (*frame_timing)(void *, uint64_t, uint64_t, AmaterasuCaptureFrameTimingV1 *);
+} AmaterasuCaptureApiV1_12;
+#define AMATERASU_CAPTURE_API_V1_12_SIZE ((uint32_t)sizeof(AmaterasuCaptureApiV1_12))
+
+/* Optional capture tail; missing tail cannot justify dropping required data. */
+typedef struct {
+    AmaterasuCaptureApiV1_12 base;
+    AmaterasuStatus (*read_resource_frame_with_metadata)(void *, uint64_t, AmaterasuFrameResourceMetadataSinkV1);
+} AmaterasuCaptureApiV1_13;
+#define AMATERASU_CAPTURE_API_V1_13_SIZE ((uint32_t)sizeof(AmaterasuCaptureApiV1_13))
 typedef struct {
     AmaterasuVideoApiV1_1 base;
     AmaterasuStatus (*hdr_metadata)(void *, uint64_t, AmaterasuHdrMetadata *);

@@ -7,6 +7,8 @@ mod audio;
 pub use audio::*;
 mod audio_encoder;
 pub use audio_encoder::*;
+mod audio_extensible;
+pub use audio_extensible::*;
 mod control;
 pub use control::*;
 mod clock;
@@ -21,22 +23,36 @@ mod dmabuf_lease;
 pub use dmabuf_lease::*;
 mod capture_events;
 pub use capture_events::*;
+mod frame_processing;
+pub use frame_processing::*;
 mod frame_resource;
 pub use frame_resource::*;
+mod capture_timing;
+pub use capture_timing::*;
 mod source_preflight;
 pub use source_preflight::*;
+mod frame_metadata;
+pub use frame_metadata::*;
 mod encoder_provider;
 pub use encoder_provider::*;
 mod encoder_input_pool;
 pub use encoder_input_pool::*;
 mod encode_timing;
 pub use encode_timing::*;
+mod gpu_input_readiness;
+pub use gpu_input_readiness::*;
+mod cuda_resource;
+pub use cuda_resource::*;
+mod resource_handoff;
+pub use resource_handoff::*;
 mod codec;
 pub use codec::*;
 mod geometry;
 pub use geometry::*;
 mod transport;
 pub use transport::*;
+mod video_framing;
+pub use video_framing::*;
 
 pub const INTERFACE_MAJOR: u32 = 1;
 pub const INTERFACE_MINOR: u32 = 0;
@@ -481,6 +497,9 @@ pub struct EncoderApiV1_1 {
     pub submit: unsafe extern "C" fn(*mut c_void, u64, *const CpuFrame, u32) -> Status,
     pub receive: unsafe extern "C" fn(*mut c_void, u64, PacketSink) -> Status,
     pub drain: unsafe extern "C" fn(*mut c_void, u64) -> Status,
+    /// The descriptor describes the source size. A provider may fit that source
+    /// into its independently configured output size, or decline it before any
+    /// effect with MEDIA_UNSUPPORTED. Consumers preserve source dimensions.
     pub submit_dmabuf: unsafe extern "C" fn(*mut c_void, u64, *const DmaBufFrame, u32) -> Status,
 }
 

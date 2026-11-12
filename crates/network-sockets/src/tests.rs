@@ -247,6 +247,132 @@ fn tcp_listener_connection_peek_and_shutdown_use_the_same_contract() {
         STATUS_OK
     );
 }
+
+#[test]
+fn closing_listener_prevents_inflight_accept_from_publishing_a_child() {
+    let factory = Factory::with_limits(2);
+    let provider = Bound::new(&factory);
+    let mut listener = 0;
+    let options = net::ListenOptions {
+        size: size_of::<net::ListenOptions>() as u32,
+        flags: 0,
+        backlog: 16,
+        reserved: 0,
+    };
+    assert_eq!(
+        unsafe {
+            (provider.api().tcp_listen)(
+                provider.context(),
+                to_address("127.0.0.1:0".parse().unwrap()),
+                options,
+                &mut listener,
+            )
+        },
+        STATUS_OK
+    );
+    let address = provider.local(listener);
+    let context = provider.context() as usize;
+    let accept = provider.api().accept;
+    let worker = std::thread::spawn(move || {
+        let mut child = 0;
+        let mut peer = net::Address::default();
+        // SAFETY: the test retains the binding until the worker joins.
+        let status = unsafe { accept(context as *mut c_void, listener, &mut child, &mut peer) };
+        (status, child)
+    });
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while factory.shared.handles.load(Ordering::Acquire) != 2
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::yield_now();
+    }
+    let entered = factory.shared.handles.load(Ordering::Acquire) == 2;
+    if !entered {
+        let client = TcpStream::connect_timeout(&address, Duration::from_secs(2)).unwrap();
+        let _ = worker.join();
+        drop(client);
+        panic!("accept worker did not reach the blocking call");
+    }
+    let close_status = unsafe { (provider.api().close)(provider.context(), listener) };
+    // The in-flight accept retains the listener; connect wakes it even after
+    // the handle has been closed. Close itself is not a cancellation API.
+    let client = TcpStream::connect_timeout(&address, Duration::from_secs(2)).unwrap();
+    let (status, child) = worker.join().unwrap();
+    drop(client);
+    assert_eq!(close_status, STATUS_OK);
+    assert_eq!(status, net::NOT_FOUND);
+    assert_eq!(child, 0);
+    assert_eq!(factory.shared.handles.load(Ordering::Acquire), 0);
+}
+#[test]
+fn explicitly_nonblocking_connected_tcp_reads_and_peeks_do_not_wait_for_an_idle_peer() {
+    for peek in [false, true] {
+        let factory = Factory::new();
+        let provider = Bound::new(&factory);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client = 0;
+        assert_eq!(
+            unsafe {
+                (provider.api().tcp_connect)(
+                    provider.context(),
+                    to_address(listener.local_addr().unwrap()),
+                    1_000,
+                    &mut client,
+                )
+            },
+            STATUS_OK
+        );
+        // Outbound streams start blocking; a polling consumer selects its mode.
+        assert_eq!(
+            unsafe { (provider.api().set_option)(provider.context(), client, net::NONBLOCKING, 1) },
+            STATUS_OK
+        );
+        listener.set_nonblocking(true).unwrap();
+        let accept_deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let peer = loop {
+            match listener.accept() {
+                Ok((peer, _)) => break peer,
+                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                    assert!(std::time::Instant::now() < accept_deadline);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Err(error) => panic!("loopback accept failed: {error}"),
+            }
+        };
+        let (release, released) = std::sync::mpsc::sync_channel(1);
+        let holding_peer = std::thread::spawn(move || {
+            let _ = released.recv_timeout(Duration::from_millis(500));
+            drop(peer);
+        });
+        let mut output = [0; 1];
+        let mut count = usize::MAX;
+        let started = std::time::Instant::now();
+        let operation = if peek {
+            provider.api().peek
+        } else {
+            provider.api().read
+        };
+        // SAFETY: the live binding and writable buffers outlive this callback.
+        let status = unsafe {
+            operation(
+                provider.context(),
+                client,
+                output.as_mut_ptr(),
+                output.len(),
+                &mut count,
+            )
+        };
+        let elapsed = started.elapsed();
+        let _ = release.send(());
+        holding_peer.join().unwrap();
+        assert!(
+            elapsed < Duration::from_millis(100),
+            "idle TCP operation blocked"
+        );
+        assert_eq!(status, net::WOULD_BLOCK);
+    }
+}
+
 #[test]
 fn address_value_conversion_preserves_ipv6_scope_and_rejects_noncanonical_ipv4() {
     let scoped = SocketAddr::V6(SocketAddrV6::new("fe80::1".parse().unwrap(), 42, 7, 19));
@@ -267,6 +393,37 @@ fn releasing_binding_closes_owned_sockets_and_returns_budget() {
     drop(socket);
     let replacement = Bound::new(&factory);
     replacement.udp();
+}
+
+#[test]
+fn shutdown_announcements_preserve_cleanup_and_quiescence_closes_handle_admission() {
+    let factory = Factory::new();
+    let binding = Bound::new(&factory);
+    factory.prepare_shutdown(1_000).unwrap();
+    let existing = binding.udp();
+    let address = binding.local(existing);
+    assert!(factory.quiesce().unwrap());
+    let mut rejected = 0;
+    assert_eq!(
+        unsafe {
+            (binding.api().udp_bind)(
+                binding.context(),
+                to_address("127.0.0.1:0".parse().unwrap()),
+                &mut rejected,
+            )
+        },
+        net::INTERRUPTED
+    );
+    assert_eq!(rejected, 0);
+    assert!(matches!(
+        unsafe { bind_standalone(&factory, "late.consumer") },
+        Err(net::INTERRUPTED)
+    ));
+    assert_eq!(
+        unsafe { (binding.api().close)(binding.context(), existing) },
+        STATUS_OK
+    );
+    assert!(UdpSocket::bind(address).is_ok());
 }
 
 #[test]
@@ -304,4 +461,14 @@ fn dns_numeric_address_and_unsupported_options_are_explicit() {
         unsafe { (provider.api().set_option)(provider.context(), id, net::NONBLOCKING, 2) },
         STATUS_INVALID_ARGUMENT
     );
+}
+
+#[test]
+fn udp_send_buffer_request_never_shrinks_the_default() {
+    let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)).unwrap();
+    let default = socket.send_buffer_size().unwrap();
+
+    request_udp_send_buffer(&socket);
+
+    assert!(socket.send_buffer_size().unwrap() >= default);
 }

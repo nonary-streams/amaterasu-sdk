@@ -60,7 +60,7 @@ impl<P: SourcePreflightProvider + 'static> SourcePreflightFactory<P> {
     }
 }
 
-struct Inner(*const NativeInterface);
+pub(super) struct Inner(pub(super) *const NativeInterface);
 impl Inner {
     fn context(&self) -> *mut c_void {
         // SAFETY: constructor retains the authentic original binding until Drop.
@@ -90,55 +90,80 @@ impl Drop for Inner {
     }
 }
 
-struct Binding<P: SourcePreflightProvider> {
-    api: CaptureApiV1_11,
+pub(super) struct Binding<P: SourcePreflightProvider> {
+    pub(super) api: CaptureApiV1_13,
     inner: Inner,
     provider: Arc<P>,
     caller: String,
 }
 impl<P: SourcePreflightProvider + 'static> Binding<P> {
-    fn new(inner: Inner, provider: Arc<P>, caller: String) -> Box<Self> {
+    pub(super) fn new(inner: Inner, provider: Arc<P>, caller: String) -> Box<Self> {
+        let timing = inner
+            .table::<CaptureApiV1_12>(CAPTURE_FRAME_TIMING_INTERFACE_MINOR)
+            .is_some();
+        let metadata = inner
+            .table::<CaptureApiV1_13>(CAPTURE_METADATA_INTERFACE_MINOR)
+            .is_some();
         let mut binding = Box::new(Self {
-            api: CaptureApiV1_11 {
-                base: CaptureApiV1_10 {
-                    base: CaptureApiV1_9 {
-                        base: CaptureApiV1_7 {
-                            base: CaptureApiV1_6 {
-                                base: NativeInterface {
-                                    header: AbiHeader {
-                                        size: CAPTURE_API_V1_11_SIZE,
-                                        major: INTERFACE_MAJOR,
-                                        minor: CAPTURE_SOURCE_PREFLIGHT_INTERFACE_MINOR,
+            api: CaptureApiV1_13 {
+                base: CaptureApiV1_12 {
+                    base: CaptureApiV1_11 {
+                        base: CaptureApiV1_10 {
+                            base: CaptureApiV1_9 {
+                                base: CaptureApiV1_7 {
+                                    base: CaptureApiV1_6 {
+                                        base: NativeInterface {
+                                            header: AbiHeader {
+                                                size: if metadata {
+                                                    CAPTURE_API_V1_13_SIZE
+                                                } else if timing {
+                                                    CAPTURE_API_V1_12_SIZE
+                                                } else {
+                                                    CAPTURE_API_V1_11_SIZE
+                                                },
+                                                major: INTERFACE_MAJOR,
+                                                minor: if metadata {
+                                                    CAPTURE_METADATA_INTERFACE_MINOR
+                                                } else if timing {
+                                                    CAPTURE_FRAME_TIMING_INTERFACE_MINOR
+                                                } else {
+                                                    CAPTURE_SOURCE_PREFLIGHT_INTERFACE_MINOR
+                                                },
+                                            },
+                                            context: std::ptr::null_mut(),
+                                            release: Some(release::<P>),
+                                        },
+                                        read_frame: read_frame::<P>,
+                                        geometry: geometry::<P>,
+                                        read_frame_with_freshness: read_fresh::<P>,
+                                        read_frame_with_capture_timestamp: read_timed::<P>,
+                                        read_dmabuf_frame: read_dmabuf::<P>,
+                                        latest_presentation: latest_presentation::<P>,
+                                        read_dmabuf_frame_leased: read_leased::<P>,
                                     },
-                                    context: std::ptr::null_mut(),
-                                    release: Some(release::<P>),
+                                    subscribe_events: subscribe::<P>,
+                                    unsubscribe_events: unsubscribe::<P>,
+                                    resolve_swap: resolve_swap::<P>,
                                 },
-                                read_frame: read_frame::<P>,
-                                geometry: geometry::<P>,
-                                read_frame_with_freshness: read_fresh::<P>,
-                                read_frame_with_capture_timestamp: read_timed::<P>,
-                                read_dmabuf_frame: read_dmabuf::<P>,
-                                latest_presentation: latest_presentation::<P>,
-                                read_dmabuf_frame_leased: read_leased::<P>,
+                                enumerate_resources: enumerate_resources::<P>,
+                                select_resource: select_resource::<P>,
+                                read_resource_frame: read_resource::<P>,
+                                hdr_metadata: hdr_metadata::<P>,
                             },
-                            subscribe_events: subscribe::<P>,
-                            unsubscribe_events: unsubscribe::<P>,
-                            resolve_swap: resolve_swap::<P>,
+                            color_provenance: color_provenance::<P>,
                         },
-                        enumerate_resources: enumerate_resources::<P>,
-                        select_resource: select_resource::<P>,
-                        read_resource_frame: read_resource::<P>,
-                        hdr_metadata: hdr_metadata::<P>,
+                        source_preflight: query::<P>,
                     },
-                    color_provenance: color_provenance::<P>,
+                    frame_timing: frame_timing::<P>,
                 },
-                source_preflight: query::<P>,
+                read_resource_frame_with_metadata: read_metadata::<P>,
             },
             inner,
             provider,
             caller,
         });
-        binding.api.base.base.base.base.base.context = (&mut *binding as *mut Self).cast();
+        binding.api.base.base.base.base.base.base.base.context =
+            (&mut *binding as *mut Self).cast();
         binding
     }
 }
@@ -171,8 +196,8 @@ unsafe extern "C" fn bind<P: SourcePreflightProvider + 'static>(
         let query = unsafe { &*query };
         if !query.header.supports::<NativeInterfaceQuery>()
             || query.interface_major != INTERFACE_MAJOR
-            || query.min_minor > CAPTURE_SOURCE_PREFLIGHT_INTERFACE_MINOR
-            || query.min_size > CAPTURE_API_V1_11_SIZE
+            || query.min_minor > CAPTURE_METADATA_INTERFACE_MINOR
+            || query.min_size > CAPTURE_API_V1_13_SIZE
         {
             return MEDIA_UNSUPPORTED;
         }
@@ -218,8 +243,24 @@ unsafe extern "C" fn bind<P: SourcePreflightProvider + 'static>(
         if inner.table::<CaptureApiPrefix>(0).is_none() {
             return MEDIA_BACKEND_ERROR;
         }
+        if (query.min_minor > CAPTURE_SOURCE_PREFLIGHT_INTERFACE_MINOR
+            || query.min_size > CAPTURE_API_V1_11_SIZE)
+            && inner
+                .table::<CaptureApiV1_12>(CAPTURE_FRAME_TIMING_INTERFACE_MINOR)
+                .is_none()
+        {
+            return MEDIA_UNSUPPORTED;
+        }
+        if (query.min_minor > CAPTURE_FRAME_TIMING_INTERFACE_MINOR
+            || query.min_size > CAPTURE_API_V1_12_SIZE)
+            && inner
+                .table::<CaptureApiV1_13>(CAPTURE_METADATA_INTERFACE_MINOR)
+                .is_none()
+        {
+            return MEDIA_UNSUPPORTED;
+        }
         let binding = Binding::new(inner, factory.provider.clone(), caller_text.into());
-        let pointer = (&binding.api as *const CaptureApiV1_11).cast();
+        let pointer = (&binding.api as *const CaptureApiV1_13).cast();
         let _ = Box::into_raw(binding);
         // SAFETY: broker receives exactly one stable wrapper binding for unique release.
         unsafe { output.write(pointer) };
@@ -264,6 +305,7 @@ forward!(enumerate_resources,CaptureApiV1_8,8,enumerate_resources,stream:u64,sin
 forward!(select_resource,CaptureApiV1_8,8,select_resource,stream:u64,generation:u64,offer:u64);
 forward!(read_resource,CaptureApiV1_8,8,read_resource_frame,stream:u64,sink:CaptureResourceFrameSink);
 forward!(hdr_metadata,CaptureApiV1_9,9,hdr_metadata,stream:u64,output:*mut HdrMetadata);
+forward!(frame_timing,CaptureApiV1_12,12,frame_timing,stream:u64,sequence:u64,output:*mut CaptureFrameTimingV1);
 forward!(color_provenance,CaptureApiV1_10,10,color_provenance,stream:u64,output:*mut u32);
 
 unsafe extern "C" fn unsubscribe<P: SourcePreflightProvider>(context: *mut c_void, stream: u64) {
@@ -318,3 +360,5 @@ unsafe extern "C" fn query<P: SourcePreflightProvider>(
         STATUS_OK
     })
 }
+
+forward!(read_metadata,CaptureApiV1_13,13,read_resource_frame_with_metadata,stream:u64,sink:FrameResourceMetadataSinkV1);

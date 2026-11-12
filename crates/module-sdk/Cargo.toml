@@ -7,11 +7,14 @@ rust-version.workspace = true
 [features]
 network-test-support = ["dep:amaterasu-network-sockets"]
 network-http = ["dep:ureq"]
+process = ["dep:amaterasu-process-api"]
 
 [dependencies]
+amaterasu-timing-metrics.workspace = true
 base64 = "0.22"
 amaterasu-abi.workspace = true
 amaterasu-network-api.workspace = true
+amaterasu-process-api = { workspace = true, optional = true }
 amaterasu-network-sockets = {workspace = true, optional = true}
 amaterasu-data-plane.workspace = true
 getrandom.workspace = true
@@ -28,3 +31,7 @@ workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+libloading.workspace = true
+amaterasu-module-testkit.workspace = true

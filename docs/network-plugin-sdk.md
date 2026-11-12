@@ -132,13 +132,31 @@ during network I/O. Provider bindings close all remaining handles on release.
 Consumers must stop/join their workers and release network resources before the
 provider module or communication runtime is unloaded.
 
-The default platform DNS resolver cannot cancel an OS `getaddrinfo` call. A DNS
-request returns on its deadline, while the provider bounds and tracks outstanding
-resolver workers. Final provider-state destruction joins those workers so code
-cannot run after unloading. Shutdown can therefore wait for an OS resolver that
-has not returned; a replacement provider with cancellable DNS can improve this
-without changing consumers. This is an explicit current limitation, not a false
-retirement guarantee.
+The default provider runs OS name resolution in its own embedded helper
+executable, with at most eight owned lookups. It does not leave `getaddrinfo`
+threads executing in an unloading provider library. A request deadline cancels
+its helper; the provider retains the exact process and containment ownership
+until exit and reaping are observed. Cancellation alone does not establish
+retirement. Shutdown announcement preserves the earliest deadline, and
+quiescence remains pending or reports failure while any lookup is unretired.
+
+The production host retains the complete loaded graph when quiescence fails,
+including module instances, libraries and runtime endpoints, and refuses another
+graph in that process. It returns a shutdown error and exits the worker instead
+of invoking an unfinished module's destructor or acknowledging success.
+Standalone factory users must likewise finish owned shutdown before destruction;
+the owned shutdown operation returns the factory on pending or failed cleanup.
+Its final destruction fallback is bounded by the remaining shutdown allowance
+and aborts the embedding process if exact helper retirement remains unproven.
+It never abandons an unreaped child or waits without a deadline.
+
+The Network component obtains its helper storage root through the explicit
+`amaterasu.host-state-context/1` grant. The host chooses that root; component
+settings cannot replace it. Helper bytes are part of the signed provider image,
+and launching does not search an ambient executable path. Existing approved
+policies must include the new grant before selecting this component version;
+a missing grant fails closed and does not authorize a policy bypass. Source
+and portable tests do not establish native Windows or macOS qualification.
 
 `Network::from_native_table` is an explicitly unsafe owned-interface constructor
 for provider composition and tests. It releases a complete valid interface prefix
@@ -173,3 +191,27 @@ TCP read/write, UDP and batching, resource budgets, per-binding ownership, final
 release and zero-length datagrams. Source/test qualification is separate from
 installation, real-client playback, physical-network throughput, Windows socket
 offload validation and live provider replacement during an active stream.
+
+## Optional receive diagnostics (v1.1)
+
+The original `NetworkApi` remains a v1.0 prefix. The default provider also offers
+`NetworkApiV1_1` under the same immutable interface identity. Consumers check the
+`DATAGRAM_DIAGNOSTICS` capability, minor version and complete tail size before
+using `recv_from_timed` or `socket_diagnostics`. The SDK uses the **selected v1
+provider's** ordinary receive call when the tail is absent and returns unknown
+timing; it never substitutes the default provider. All handles and allocations
+remain owned by that binding.
+
+Linux enables software receive timestamps before binding. `recv_from_timed`
+returns kernel timestamp-to-userspace age when `KERNEL_RESIDENCE_REALTIME` is set.
+This observation uses the kernel's realtime timestamp and a userspace realtime
+sample; it includes kernel queue residence and return overhead. It is **not** a
+client-to-host network measurement. Negative/invalid or missing timestamps are
+unknown. A realtime clock step can affect this observation; the host's monotonic
+spike timestamps and OS sample clock correlation are independent.
+
+`SOCKET_MEMORY` establishes receive/send queue memory charges, buffer limits and
+cumulative receive drops. Memory charges include OS packet overhead, and are not
+payload byte counts. Other platforms or replacement providers may expose the
+tail with flags zero; consumers retain unknown values. No IO outcome depends on
+diagnostic availability. See [Linux socket timestamp semantics](https://man7.org/linux/man-pages/man7/socket.7.html).

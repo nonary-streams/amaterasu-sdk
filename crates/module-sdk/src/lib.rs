@@ -2,29 +2,47 @@
 pub mod application_library;
 pub mod audio;
 pub mod capture;
+pub mod control_error;
 pub mod data_plane;
+pub mod diagnostics;
 pub mod display;
+pub mod display_profile;
+pub mod display_settings;
 pub mod encode;
+pub mod events;
 pub mod exports;
 pub mod foreground_context;
+pub mod frame_processing;
+pub mod hooks;
 pub mod input;
+pub mod launch_options;
+pub mod lifecycle_ledger;
 pub mod media;
+pub mod media_profile;
 mod native;
 pub mod network;
 #[cfg(feature = "network-http")]
 pub mod network_http;
 pub mod operation_api;
 pub mod pairing_authority;
+#[cfg(feature = "process")]
+pub mod process;
 pub mod processing;
+pub mod processing_composition;
+pub mod processing_provider;
+pub mod protocol_handler;
 pub mod requests;
 pub mod retained_options;
 pub mod retirement;
+pub mod service_worker;
 pub mod session_presentation;
 pub mod threading;
+pub mod trace;
 pub mod transport;
 pub mod video;
 mod work;
 pub use work::WorkNotifier;
+pub mod video_framing;
 pub mod virtual_display;
 pub use native::NativeBinding;
 
@@ -36,11 +54,13 @@ pub use amaterasu_contracts::encoder::{
     validate_software_options,
 };
 pub use amaterasu_contracts::{
-    ApiFieldKind, ApiMethod, ApiPrivilege, ApiSchema, Command, HOST_PACKAGE_BARRIER_SERVICE,
-    HostLifecycleAction, Response, RunningModuleIdentity, RuntimeHostContext,
+    ApiFieldKind, ApiMethod, ApiPrivilege, ApiSchema, Command, DIRECT_UNAVAILABLE,
+    HOST_PACKAGE_BARRIER_SERVICE, HostLifecycleAction, MAX_BROKER_RESULT_BYTES, REFUSED_PREFIX,
+    Response, RunningModuleIdentity, RuntimeHostContext,
 };
 pub use amaterasu_extension_api as extension_api;
 pub use amaterasu_media as media_abi;
+pub use control_error::{BrokerError, ControlError, ControlResult, ErrorCode, ErrorOrigin};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::sync::{
     Arc,
@@ -103,6 +123,25 @@ impl RuntimeClient {
         let output = unsafe { self.endpoint.call(&input) }
             .map_err(|status| format!("runtime transport failed with status {status}"))?;
         serde_json::from_slice(&output).map_err(|error| error.to_string())
+    }
+
+    /// Send a command and separate the three ways it can go wrong: a lost
+    /// exchange, a broker refusal, and (left to the caller) an unexpected reply.
+    /// Prefer the typed helpers in [`requests`] where one fits.
+    pub fn send_checked(&self, command: Command) -> ControlResult<Response> {
+        control_error::checked(self.send(command))
+    }
+
+    /// Decode the startup settings trusted composition selected for this
+    /// module. A module without configured settings receives an empty object,
+    /// so give every field of `T` a default.
+    pub fn settings<T: serde::de::DeserializeOwned>(&self) -> ControlResult<T> {
+        match self.send_checked(Command::GetSettings {})? {
+            Response::Result { payload } => {
+                serde_json::from_value(payload).map_err(ControlError::payload)
+            }
+            response => Err(ControlError::unexpected(&response)),
+        }
     }
 
     pub fn require_success(&self, command: Command) -> ModuleResult<()> {
@@ -186,6 +225,68 @@ impl RuntimeClient {
         Ok(root.into())
     }
 
+    /// Calls the provider of `service` synchronously on this thread, with the
+    /// same `call` grant an ordinary request needs.
+    ///
+    /// `Unavailable` proves the provider was not entered: the runtime or the
+    /// provider does not support direct calls, this is not the provider's
+    /// thread, or the provider declined this operation. Submit an ordinary
+    /// request instead. An error means the provider was entered and its
+    /// outcome is unknown, exactly like a failed request.
+    pub fn call_direct(
+        &self,
+        service: &str,
+        payload: serde_json::Value,
+    ) -> ModuleResult<DirectReply> {
+        self.direct_call(service, payload, false)
+    }
+
+    /// Pass the direct call this layer is serving to the next hop beneath it,
+    /// which is shown that call's caller. Use it from
+    /// [`ManagedModule::serve_direct`] in a module that
+    /// [wraps](Self::wrap) `service`; the result is what to return.
+    ///
+    /// The three outcomes stay apart. `Declined` proves the next hop was not
+    /// entered, so the consumer's ordinary request is safe. `Failed` means it
+    /// was entered and its outcome is unknown, and the consumer is told the
+    /// same instead of being invited to repeat the call.
+    pub fn forward_direct(&self, service: &str, payload: serde_json::Value) -> DirectService {
+        match self.direct_call(service, payload, true) {
+            Ok(DirectReply::Completed(reply)) => DirectService::Replied(reply),
+            Ok(DirectReply::Unavailable { .. }) => DirectService::Declined,
+            Err(_) => DirectService::Failed,
+        }
+    }
+
+    fn direct_call(
+        &self,
+        service: &str,
+        payload: serde_json::Value,
+        forward: bool,
+    ) -> ModuleResult<DirectReply> {
+        match self.send(Command::CallDirect {
+            service: service.to_owned(),
+            payload,
+            forward,
+        })? {
+            Response::Result { payload } => Ok(DirectReply::Completed(payload)),
+            Response::Error { code, .. }
+                if matches!(
+                    code.as_str(),
+                    DIRECT_UNAVAILABLE
+                        | "invalid_request"
+                        | "permission_denied"
+                        | "unavailable"
+                        | "runtime_endpoint_required"
+                ) =>
+            {
+                Ok(DirectReply::Unavailable { code })
+            }
+            Response::Error { code, message } => Err(format!("{code}: {message}")),
+            unexpected => Err(format!("unexpected runtime response: {unexpected:?}")),
+        }
+    }
+
     /// For internal calls with unique operation IDs that will never be retried
     /// after completion. Consumes terminal request tracking after copying a result.
     /// Ordinary `send` retains the runtime's five-minute retry behavior.
@@ -195,9 +296,12 @@ impl RuntimeClient {
             _ => None,
         };
         let response = self.send(command)?;
+        // A serving principal's refusal is as final as a cancellation.
         let terminal = matches!(&response, Response::Result { .. })
             || matches!(&response, Response::Error { code, .. }
-                if code == "cancelled" || code == "deadline_exceeded");
+                if code == "cancelled"
+                    || code == "deadline_exceeded"
+                    || code.starts_with(REFUSED_PREFIX));
         if terminal && let Some(request) = result_request {
             self.require_success(Command::ReleaseResult { request })?;
         }
@@ -359,11 +463,77 @@ impl LogQueue {
     }
 }
 
+/// Outcome of [`RuntimeClient::call_direct`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum DirectReply {
+    /// The provider handled the call; this is its reply payload.
+    Completed(serde_json::Value),
+    /// The provider was not entered. `code` says why, for diagnostics only.
+    Unavailable { code: String },
+}
+
+/// What a module did with a direct call it was offered.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DirectService {
+    /// The reply, which follows the service's existing wire contract.
+    Replied(serde_json::Value),
+    /// Declined before any effect. The caller submits an ordinary request.
+    Declined,
+    /// The call was taken and its outcome is unknown. The caller is told the
+    /// call failed and must not assume that nothing happened.
+    Failed,
+}
+
+/// One synchronous request delivered to [`ManagedModule::call_direct`].
+pub struct DirectCall<'a> {
+    /// The runtime-authenticated principal of the calling module.
+    pub caller: &'a str,
+    /// The broker service the caller addressed, which this module provides.
+    pub service: &'a str,
+    pub payload: serde_json::Value,
+}
+
 pub trait ManagedModule: Sized {
     fn start(runtime: RuntimeClient) -> ModuleResult<Self>;
     fn tick(&mut self) -> ModuleResult<()>;
 
+    /// Serve one request of a broker service this module provides, on the
+    /// caller's thread and before returning. Use it for short operations where
+    /// a queued request's round trip is the cost, such as delivering input.
+    ///
+    /// Return `None` to decline: the caller then submits an ordinary request,
+    /// so declining must leave no effect behind. A reply follows the service's
+    /// existing wire contract. The call must be bounded and must not wait for
+    /// another module; anything that needs a later tick belongs to the
+    /// request path. It is never invoked while another call into this module
+    /// is active, nor from a thread other than the one that ticks it.
+    fn call_direct(&mut self, _call: DirectCall<'_>) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Serve a direct call with all three outcomes. Implement this instead of
+    /// [`call_direct`](Self::call_direct) when the module can take a call and
+    /// then not know how it ended, as a layer that passes the call on with
+    /// [`RuntimeClient::forward_direct`] can. The rules of `call_direct`
+    /// apply. The default serves `call_direct`.
+    fn serve_direct(&mut self, call: DirectCall<'_>) -> DirectService {
+        match self.call_direct(call) {
+            Some(reply) => DirectService::Replied(reply),
+            None => DirectService::Declined,
+        }
+    }
+
+    /// Announce host shutdown once, before any consumer begins quiescing.
+    /// Record the remaining host budget and stop admitting external work only.
+    /// Keep serving declared consumers and retain owned resources until quiesce;
+    /// this bounded, nonblocking announcement must not begin provider cleanup.
+    fn prepare_shutdown(&mut self, _remaining_ms: u64) -> ModuleResult<()> {
+        Ok(())
+    }
+
     /// Begin or poll shutdown while dependencies continue receiving ticks.
+    /// The host begins this after declared consumers have drained, and begins
+    /// dependency shutdown only after this module reports ready.
     /// Stop admitting new work, release owned effects, then return true. A false
     /// result keeps the instance and all providers alive for another host tick.
     fn quiesce(&mut self) -> ModuleResult<bool> {
@@ -387,6 +557,22 @@ macro_rules! export_module {
                 tick: $crate::exports::tick::<$module>,
                 health: $crate::exports::health::<$module>,
                 destroy: $crate::exports::destroy::<$module>,
+            };
+            &API
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn amaterasu_module_direct_v1() -> *const $crate::abi::ModuleDirectApi {
+            static API: $crate::abi::ModuleDirectApi = $crate::abi::ModuleDirectApi {
+                header: $crate::abi::AbiHeader::of::<$crate::abi::ModuleDirectApi>(),
+                call: $crate::exports::direct::<$module>,
+            };
+            &API
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn amaterasu_module_shutdown_v1() -> *const $crate::abi::ModuleShutdownApi {
+            static API: $crate::abi::ModuleShutdownApi = $crate::abi::ModuleShutdownApi {
+                header: $crate::abi::AbiHeader::of::<$crate::abi::ModuleShutdownApi>(),
+                prepare: $crate::exports::prepare_shutdown::<$module>,
             };
             &API
         }

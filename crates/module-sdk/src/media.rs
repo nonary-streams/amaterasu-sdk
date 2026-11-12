@@ -9,16 +9,21 @@ pub mod native_contracts {
     pub const FRAME_RESOURCE_CONSUMER: &str = "amaterasu.frame-resource-consumer.native/1";
     pub const FRAME_RESOURCE_PROCESSOR: &str = "amaterasu.frame-resource-processor.native/1";
     pub const CPU_PROCESSOR: &str = "amaterasu.cpu-frame-processor.native/1";
-    pub const GPU_PROCESSOR: &str = "amaterasu.gpu-frame-processor.native/1";
+    pub const FRAME_PROCESSOR: &str = "amaterasu.frame-processor.native/1";
 }
 
+mod cpu_pixels;
+pub use cpu_pixels::CpuPixels;
 mod generic;
 mod lease;
+pub mod metadata;
+mod readiness;
 mod timing;
 use amaterasu_abi::{STATUS_INVALID_ARGUMENT, Status};
 use amaterasu_media::{CpuFrame, frame_size};
 pub use generic::{BorrowedResourceFrame, OwnedResourceCpuFrame, RetainedResourceFrame};
 pub use lease::RetainedDmaBufFrame;
+pub use readiness::encoder_gpu_input_ready;
 pub use timing::*;
 
 /// A validated CPU frame whose pixels remain borrowed for its lifetime.
@@ -159,6 +164,12 @@ impl OwnedCpuFrame {
     /// Processing may change pixels in place without changing the valid layout.
     pub fn pixels_mut(&mut self) -> &mut [u8] {
         &mut self.pixels
+    }
+}
+
+impl AsRef<[u8]> for OwnedCpuFrame {
+    fn as_ref(&self) -> &[u8] {
+        self.pixels()
     }
 }
 

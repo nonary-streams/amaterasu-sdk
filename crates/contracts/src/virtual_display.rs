@@ -71,6 +71,9 @@ pub struct VirtualDisplayModePolicy {
     pub configuration_option: Option<VirtualDisplayConfigurationOption>,
     #[serde(default)]
     pub remapping: VirtualDisplayModeRemapping,
+    /// Negotiated stream FPS used for remapping, independent of display refresh.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_fps: Option<u32>,
     pub context: VirtualDisplayResolverContext,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolution_option: Option<VirtualDisplayResolutionOption>,
@@ -104,8 +107,8 @@ impl VirtualDisplayModePolicy {
                     .manual_refresh_rate
                     .as_deref()
                     .is_none_or(|value| value.trim().is_empty()))
-            || (self.context.optimize_game_settings
-                && !self.context.client_display_mode_override
+            || self.client_fps == Some(0)
+            || (!self.context.client_display_mode_override
                 && self.resolution_option == Some(VirtualDisplayResolutionOption::Manual)
                 && self
                     .manual_resolution
@@ -149,6 +152,9 @@ pub enum VirtualDisplayLayout {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct VirtualDisplayIntent {
+    /// A Windows 3.8+ catalog private to the owning client's resolution.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub requested_resolution_only: bool,
     pub identity: String,
     pub reference_id: String,
     pub name: String,
@@ -172,6 +178,10 @@ pub struct VirtualDisplayIntent {
 impl VirtualDisplayIntent {
     pub fn validate(&self) -> Result<(), &'static str> {
         if !valid_identity(&self.identity)
+            || (self.requested_resolution_only
+                && (!self.active()
+                    || self.virtual_display_mode != VirtualDisplayMode::PerClient
+                    || !self.dd_use_sunshine_virtual_display_driver))
             || !valid_reference_id(&self.reference_id)
             || self.name.is_empty()
             || self.name.len() > 31
@@ -207,6 +217,10 @@ impl VirtualDisplayIntent {
                 || self.virtual_display_mode != VirtualDisplayMode::Disabled
         })
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 pub fn valid_identity(identity: &str) -> bool {
@@ -374,6 +388,7 @@ mod tests {
 
     fn intent() -> VirtualDisplayIntent {
         VirtualDisplayIntent {
+            requested_resolution_only: false,
             identity: "00000000-0000-0000-0000-000000000001".into(),
             reference_id: "stream-session-42".into(),
             name: "Amaterasu".into(),
@@ -388,6 +403,34 @@ mod tests {
             request_virtual_display: None,
             display_policy: None,
         }
+    }
+
+    #[test]
+    fn requested_resolution_catalog_requires_an_active_private_driver_intent() {
+        let mut request = intent();
+        let legacy = serde_json::to_value(&request).unwrap();
+        assert!(legacy.get("requested_resolution_only").is_none());
+        assert!(
+            !serde_json::from_value::<VirtualDisplayIntent>(legacy)
+                .unwrap()
+                .requested_resolution_only
+        );
+        request.requested_resolution_only = true;
+        assert_eq!(request.validate(), Ok(()));
+        let private = serde_json::to_value(&request).unwrap();
+        assert_eq!(private["requested_resolution_only"], true);
+        assert_eq!(
+            serde_json::from_value::<VirtualDisplayIntent>(private).unwrap(),
+            request
+        );
+        request.virtual_display_mode = VirtualDisplayMode::Shared;
+        assert_eq!(request.validate(), Err("invalid_virtual_display_intent"));
+        request.virtual_display_mode = VirtualDisplayMode::PerClient;
+        request.request_virtual_display = Some(false);
+        assert_eq!(request.validate(), Err("invalid_virtual_display_intent"));
+        request.request_virtual_display = Some(true);
+        request.dd_use_sunshine_virtual_display_driver = false;
+        assert_eq!(request.validate(), Err("invalid_virtual_display_intent"));
     }
 
     #[test]
@@ -486,6 +529,7 @@ mod tests {
         let mut request = intent();
         request.display_policy = Some(VirtualDisplayModePolicy {
             configuration_option: Some(VirtualDisplayConfigurationOption::EnsurePrimary),
+            client_fps: Some(60),
             remapping: VirtualDisplayModeRemapping {
                 mixed: vec![VirtualDisplayModeRemappingEntry {
                     requested_fps: "60".into(),
@@ -553,6 +597,7 @@ mod tests {
         let mut request = intent();
         request.display_policy = Some(VirtualDisplayModePolicy {
             configuration_option: None,
+            client_fps: None,
             remapping: VirtualDisplayModeRemapping::default(),
             context: VirtualDisplayResolverContext {
                 resolution_is_automatic: false,
@@ -574,5 +619,36 @@ mod tests {
         policy.effective_client_hdr_request = Some(false);
         policy.manual_resolution = Some("1920 by 1080".into());
         assert_eq!(request.validate(), Err("invalid_virtual_display_policy"));
+    }
+
+    #[test]
+    fn manual_resolution_is_required_without_optimize_and_stream_fps_round_trips() {
+        let mut request = intent();
+        let mut policy: VirtualDisplayModePolicy = serde_json::from_value(serde_json::json!({
+            "context": {
+                "resolution_is_automatic":false,
+                "refresh_rate_is_automatic":true,
+                "client_display_mode_override":false,
+                "optimize_game_settings":false
+            },
+            "resolution_option":"manual",
+            "client_fps":60
+        }))
+        .unwrap();
+        assert_eq!(policy.validate(), Err("invalid_virtual_display_policy"));
+        policy.manual_resolution = Some("1920x1080".into());
+        request.display_policy = Some(policy);
+        let encoded = serde_json::to_value(&request).unwrap();
+        assert_eq!(encoded["display_policy"]["client_fps"], 60);
+        assert_eq!(request.validate(), Ok(()));
+        let decoded: VirtualDisplayIntent = serde_json::from_value(encoded).unwrap();
+        assert_eq!(decoded, request);
+
+        request.display_policy.as_mut().unwrap().client_fps = Some(0);
+        assert_eq!(request.validate(), Err("invalid_virtual_display_policy"));
+        request.display_policy.as_mut().unwrap().client_fps = None;
+        let encoded = serde_json::to_value(&request).unwrap();
+        assert!(encoded["display_policy"].get("client_fps").is_none());
+        assert_eq!(request.validate(), Ok(()));
     }
 }

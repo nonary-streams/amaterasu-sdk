@@ -390,11 +390,60 @@ Replay and closed-stream scope fences have finite limits, including 8,192-entry
 bounds. Exhaustion fences further admission; it does not make old operation IDs
 safe to reuse.
 
+### Ended holders
+
+An admission holds its mutation domains until its provider confirms the work
+it admitted. A holder whose owner has ended does not keep a later session
+waiting on that indefinitely:
+
+- An admission made by an earlier host run is displaced as soon as a later
+  plan needs one of its domains, and is set aside before a plan is refused for
+  admission capacity. Nothing of that run is still executing.
+- An admission of this run whose session or stream was asked to end is waited
+  for ten seconds and then displaced, provided trusted composition granted its
+  provider `amaterasu.lifecycle/domain-takeover`. A provider with that grant
+  stops changing a domain for an earlier admission once a request arrives
+  under a newer one, and reports the earlier work's outcome as it ended.
+- Without the grant the plan waits the full 20 seconds and fails with the
+  domain and holder named, for example `mutation domain is reserved:
+  amaterasu.frame-limiter/policy is held by ended session ... whose provider
+  cannot hand it over`.
+- A holder whose owner is still open is never displaced.
+
+A displaced admission stays on record with its plan and cleanup obligations.
+It holds no domain and counts against no bound, and the rights check before
+every callback refuses it, so nothing more is dispatched under it. A late
+outcome closes its own record and cannot release, refresh or publish anything
+of its successor. `docs/lifecycle-admission-and-retirement.md` describes the
+same rule across the other lifecycle layers.
+
 Restart creates a new host epoch and fences old live bindings. Explicit
 `recover_session` can query a known, persisted provider receipt using its original
 resource identity under fresh owner authorization. It never replays an unknown
 preparation. Missing receipts, uncertain native effects, or unconfirmed retirement
 remain `recovery_required`; that state is not successful restoration.
+
+Owner abandonment after restart covers an owner that kept its application
+records only in memory and so can never report an earlier application retired.
+Its `snapshot` lists each session's `host_epoch`, so the owner can find them.
+The owner sends `recover_session` with `restart_abandonment: true` and a
+current-epoch session target, so no grant beyond `recover_session` is needed.
+It is accepted only for that owner's `recovery_required` session from an older
+epoch when every stream is retired, no input, action, shared-source or
+composition state remains, every retained admission is settled and owned by the
+session, and the only retained work is the undispatched `end_session` release.
+Otherwise it is refused, with `restart_effect_unknown` for dispatched, blocked
+or uncertain release work. On acceptance the old end receipt is rejected as
+`superseded_by_restart_abandonment`, and the frozen release graph runs its
+normal provider cleanup under recovery authorization. The application is
+recorded as `untracked_after_restart`: `application_retired` stays false, no
+retirement proof is created, and closed-session certificates still require one.
+A released session ends with `application: "untracked_after_restart"`; rejected,
+deferred or uncertain cleanup returns it to `recovery_required`. Abandonment
+lets bounded retention reclaim the session. It is not successful restoration and
+does not prove that the application stopped. NVHTTP sweeps for such sessions at
+startup and after a `session_capacity_exhausted` refusal; it never reports them
+retired.
 
 The `lookup_control_baseline` operation lets only the selected
 virtual-screen owner read an owner-acknowledged original configure settlement
@@ -430,11 +479,18 @@ rather than silently discard necessary evidence. The endpoint and integrated
 recovery path remain subject to qualification.
 
 A failed or rejected preparation callback does not establish that its effects
-were absent or cleaned up. Its admission remains held for recovery. A known
-partial preparation cannot currently settle as a clean failure; that requires
-explicit enrollment of its scoped cleanup obligations. For example, confirming
-a resize after an interrupted stream preparation does not publish a new stream
-or release the preparation's rights.
+were absent or cleaned up. Its admission remains held for recovery, until a
+later session needs one of its mutation domains and the holder's owner has
+ended; see "Ended holders" below. After a
+restart, failed initial application preparation with no admitted application or
+stream can query the selected provider's exact saved receipt. Only a cleanup
+response confirming every obligation in the original plan as released, with no
+materialized outputs or outstanding authority references, releases that
+reservation. Missing receipts, deferred restoration, and unconfirmed effects
+remain fenced. Providers must establish native retirement before publishing
+this proof; rejection alone never qualifies. Confirming a resize after an
+interrupted stream preparation does not publish a new stream or release that
+preparation's rights.
 
 ## Validation
 

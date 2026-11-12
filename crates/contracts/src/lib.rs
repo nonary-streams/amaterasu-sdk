@@ -1,13 +1,26 @@
 //! Version 1 control-plane messages. These types are independent of the bootstrap ABI.
+pub mod display_color_profile;
 pub mod encoder;
+pub mod media_profile;
+pub mod processing_composition;
 pub mod virtual_display;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Maximum serialized broker result, leaving room for its ABI message envelope.
+pub const MAX_BROKER_RESULT_BYTES: usize = 256 * 1024;
+
 /// Service name required in a module's explicit effective `call` grants before
 /// it may request that the trusted host restart or stop the selected runtime.
 pub const HOST_LIFECYCLE_SERVICE: &str = "amaterasu.host-lifecycle/1";
+
+/// One module-drain budget announced before consumers begin shutdown.
+pub const HOST_MODULE_SHUTDOWN_TIMEOUT_MS: u64 = 20_000;
+/// Allows the worker drain and a bounded process-exit tail before containment.
+pub const HOST_WORKER_SHUTDOWN_TIMEOUT_MS: u64 = 25_000;
+/// The service manager must outlast the worker's own shutdown allowance.
+pub const HOST_SERVICE_STOP_TIMEOUT_MS: u64 = 30_000;
 
 /// Explicit host grant to request a signed package trial.
 pub const HOST_PACKAGE_ACTIVATION_SERVICE: &str = "amaterasu.host-package-activation/1";
@@ -18,6 +31,10 @@ pub const HOST_PACKAGE_BARRIER_SERVICE: &str = "amaterasu.host-package-barrier/1
 /// Effective call grant allowing a module to read the host-selected state root.
 /// It does not grant access to package metadata or host lifecycle commands.
 pub const HOST_STATE_CONTEXT_SERVICE: &str = "amaterasu.host-state-context/1";
+
+/// Error code of a direct call the provider did not serve. It proves that no
+/// provider effect happened, unlike a lost or timed-out broker request.
+pub const DIRECT_UNAVAILABLE: &str = "direct_unavailable";
 
 /// Reserved runtime endpoint identity injected by the verified host. Package
 /// component identities cannot use this name because it is not a valid name.
@@ -101,8 +118,19 @@ pub struct RuntimeConfig {
     pub api_methods: Vec<ApiMethodApproval>,
     #[serde(default)]
     pub hooks: BTreeMap<String, HookSpec>,
+    /// Principals that trusted composition stacks on a service's provider,
+    /// keyed by exact service and listed outermost first. A consumer's call
+    /// reaches the first layer; a layer's own call to that service reaches
+    /// the next one, and the last layer's call reaches the provider. A layer
+    /// acts with the authority of every caller of the service it wraps.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub service_layers: BTreeMap<String, Vec<String>>,
     #[serde(default)]
     pub settings: BTreeMap<String, Value>,
+    /// Per-principal processing selections approved by trusted composition.
+    /// These are separate from each provider's private settings and confer no grants.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub processing_compositions: BTreeMap<String, processing_composition::ProcessingComposition>,
     /// Host-owned runtime facts are never serialized into a signed package
     /// policy. The host injects this context only after the selected package
     /// has been verified.
@@ -270,8 +298,30 @@ pub enum Command {
     /// Reserved for the host endpoint; returns pending product log events.
     DrainLogEvents {},
     GetSettings {},
+    /// Return only this principal's approved SDK processing composition.
+    GetProcessingComposition {},
     /// A bounded readiness hint; carries no provider data or effect authority.
     NotifyWorkReady {},
+    /// Returns this endpoint's flow trace sink. Older runtimes reject the
+    /// operation, which leaves tracing disabled for the caller.
+    TraceBind {},
+    /// Returns bounded recent flow-trace history: per-step windows, slow flows
+    /// and slow spans. Only management and Diagnostics may read it.
+    TraceSnapshot {},
+    /// Calls the registered provider of `service` synchronously on the calling
+    /// thread. Requires the same `call` grant as `Request`. The reply is
+    /// `Result`, or the `direct_unavailable` error when the provider does not
+    /// serve this operation directly; nothing was done in that case and the
+    /// caller may submit an ordinary request.
+    CallDirect {
+        service: String,
+        payload: Value,
+        /// Set by a layer to pass on the direct call it is serving for this
+        /// service. The next hop is then shown that call's caller. Without it
+        /// the call is the caller's own.
+        #[serde(default, skip_serializing_if = "is_false")]
+        forward: bool,
+    },
     /// Returns host-owned context to the state service, and to the Linux audio
     /// module for its restart-safe cleanup journal. This prevents a module
     /// policy from impersonating a host decision through `GetSettings`.
@@ -319,10 +369,63 @@ pub enum Command {
         #[serde(default)]
         parent: Option<u64>,
     },
+    /// Finds a retained ordinary request without admitting new work. A missing
+    /// result is only evidence about this runtime's current retained records;
+    /// callers must account for expiry, release, and concurrent submissions.
+    LookupRequest {
+        service: String,
+        payload: Value,
+        operation_id: String,
+        #[serde(default)]
+        parent: Option<u64>,
+    },
+    /// Looks up a retained typed API call without submitting new work.
+    LookupApiRequest {
+        service: String,
+        method: String,
+        interface_major: u32,
+        interface_minor: u32,
+        payload: Value,
+        operation_id: String,
+        #[serde(default)]
+        parent: Option<u64>,
+    },
     Poll {},
+    /// Select a request delivery mode when no delivery is in flight.
+    SelectRequestDeliveryMode {
+        reliable: bool,
+    },
+    /// Offer one request repeatedly until accepted or ended.
+    PollV2 {
+        receiver: String,
+    },
+    /// Inspect this receiver's unaccepted offer without offering queued work.
+    InspectRequestOffer {
+        receiver: String,
+    },
+    /// Accept an offered request before invoking provider effects.
+    AcceptRequest {
+        request: u64,
+        receiver: String,
+    },
+    /// Report that the accepted delivery's handler and effects have retired.
+    /// The broker requires a terminal caller result and retains this receipt
+    /// independently of result expiry. Only the accepting receiver may retire.
+    RetireRequestDelivery {
+        request: u64,
+        receiver: String,
+    },
     Complete {
         request: u64,
         payload: Value,
+    },
+    /// Ends a delivered, live request without a result. The provider asserts
+    /// that it did not perform the operation; the requester reads the error
+    /// code `refused.<code>`. The broker's own terminal codes are not accepted.
+    Refuse {
+        request: u64,
+        code: String,
+        message: String,
     },
     CheckRequest {
         request: u64,
@@ -362,12 +465,22 @@ pub enum Command {
     HookResult {
         invocation: u64,
     },
-    /// Idempotent, owner-scoped invocation with retained results.
+    /// Idempotent, owner-scoped invocation with retained results. With
+    /// `cleanup`, every participant is attempted and reported; otherwise the
+    /// first absent or failed participant ends the invocation. With `chain`,
+    /// each participant receives the previous participant's result as input.
+    /// A `transient` operation gives its identifier up when the invocation
+    /// is released or expires, so a later use starts new work; otherwise the
+    /// identifier stays fenced for the broker's lifetime.
     RunHookOperation {
         hook: String,
         payload: Value,
         operation_id: String,
         cleanup: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        chain: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        transient: bool,
     },
     ListApiApprovals {
         parent: Option<u64>,
@@ -385,6 +498,14 @@ pub enum Command {
     },
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// Prefix of the error code a requester reads after a provider refused its
+/// request with `Command::Refuse`. No broker-issued code starts with it.
+pub const REFUSED_PREFIX: &str = "refused.";
+
 /// Exclusive, stable ordering key for approved API discovery.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -400,6 +521,10 @@ pub struct ApiApprovalCursor {
 pub enum Response {
     NativeBound {
         binding: u64,
+        address: usize,
+    },
+    /// Process-local address of the caller's `TraceSinkApi` table.
+    TraceBound {
         address: usize,
     },
     Ok,
@@ -498,6 +623,60 @@ impl Response {
     }
     pub fn is_error(&self) -> bool {
         matches!(self, Self::Error { .. })
+    }
+}
+
+/// At most this many services can carry layers.
+pub const MAX_LAYERED_SERVICES: usize = 64;
+/// At most this many layers can be stacked on one service.
+pub const MAX_LAYERS_PER_SERVICE: usize = 8;
+
+impl RuntimeConfig {
+    /// Checks the layer listing on its own terms. A layer stands in the path
+    /// of every call to its service, so policy must name real principals,
+    /// name each one once, and keep the roles apart: a service's provider
+    /// cannot also be one of its layers. The runtime and package verification
+    /// apply the same rules, so a package the runtime would refuse to start
+    /// with is rejected before it is activated.
+    pub fn validate_service_layers(&self) -> Result<(), String> {
+        if self.service_layers.len() > MAX_LAYERED_SERVICES {
+            return Err("too many layered services".into());
+        }
+        for (service, layers) in &self.service_layers {
+            self.validate_layers_of(service, layers)?;
+        }
+        Ok(())
+    }
+
+    fn validate_layers_of(&self, service: &str, layers: &[String]) -> Result<(), String> {
+        let host_owned = matches!(
+            service,
+            HOST_LIFECYCLE_SERVICE
+                | HOST_LOG_SERVICE
+                | HOST_PACKAGE_ACTIVATION_SERVICE
+                | HOST_PACKAGE_BARRIER_SERVICE
+                | HOST_STATE_CONTEXT_SERVICE
+        );
+        if !valid_name(service) || host_owned || service.starts_with("hooks/") {
+            return Err(format!("service cannot be layered: {service}"));
+        }
+        let unique_layers: BTreeSet<_> = layers.iter().collect();
+        if layers.len() > MAX_LAYERS_PER_SERVICE || unique_layers.len() != layers.len() {
+            return Err(format!(
+                "too many or duplicate layers for service {service}"
+            ));
+        }
+        for layer in layers {
+            let Some(grants) = self.principals.get(layer) else {
+                return Err(format!("unknown layer {layer} for service {service}"));
+            };
+            if layer == HOST_LIFECYCLE_CONTROL_PRINCIPAL || grants.provide.contains(service) {
+                return Err(format!(
+                    "layer {layer} cannot also provide service {service}"
+                ));
+            }
+        }
+        Ok(())
     }
 }
 

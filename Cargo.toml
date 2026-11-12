@@ -6,12 +6,18 @@ members = [
     "crates/contracts",
     "crates/data-plane",
     "crates/extension-api",
+    "crates/gamestream",
     "crates/media",
     "crates/module-sdk",
+    "crates/module-testkit",
     "crates/network-api",
     "crates/network-sockets",
+    "crates/process-api",
+    "crates/runtime",
     "crates/storage",
+    "crates/timing-metrics",
     "crates/windows-capture-geometry",
+    "sdk/examples/service-guard",
 ]
 
 [workspace.package]
@@ -26,16 +32,26 @@ amaterasu-configuration-schema = { path = "crates/configuration-schema" }
 amaterasu-contracts = { path = "crates/contracts" }
 amaterasu-data-plane = { path = "crates/data-plane" }
 amaterasu-extension-api = { path = "crates/extension-api" }
+amaterasu-gamestream = { path = "crates/gamestream" }
 amaterasu-media = { path = "crates/media" }
 amaterasu-module-sdk = { path = "crates/module-sdk" }
+amaterasu-module-testkit = { path = "crates/module-testkit" }
 amaterasu-network-api = { path = "crates/network-api" }
 amaterasu-network-sockets = { path = "crates/network-sockets" }
+amaterasu-process-api = { path = "crates/process-api" }
+amaterasu-runtime = { path = "crates/runtime" }
 amaterasu-storage = { path = "crates/storage" }
+amaterasu-timing-metrics = { path = "crates/timing-metrics" }
 amaterasu-windows-capture-geometry = { path = "crates/windows-capture-geometry" }
-getrandom = "0.3"
+rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+libloading = "0.8"
 sha2 = "0.10"
+regex = "1"
+ed25519-dalek = { version = "2", default-features = false, features = ["std"] }
+getrandom = "0.3"
+httparse = "1"
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

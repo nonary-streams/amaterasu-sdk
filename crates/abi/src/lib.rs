@@ -9,6 +9,9 @@ pub type Status = i32;
 pub const STATUS_OK: Status = 0;
 pub const STATUS_INVALID_ARGUMENT: Status = 1;
 pub const STATUS_INTERNAL_ERROR: Status = 2;
+/// The callee is live but does not serve this operation here. Nothing happened;
+/// the caller may use another transport for the same operation.
+pub const STATUS_UNAVAILABLE: Status = 3;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -121,7 +124,9 @@ pub struct ModuleApi {
 }
 
 /// Optional cooperative shutdown contract, exported as amaterasu_module_quiesce_v1.
-/// The host continues ticking every component until all participants report ready.
+/// The host polls consumers before their declared providers. A pending consumer's
+/// providers keep receiving ticks and begin quiescing only after it reports ready.
+/// Every component remains live and receives ticks until all participants are ready.
 /// Calls are serialized with ModuleApi and borrow its existing live instance.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -131,6 +136,22 @@ pub struct ModuleQuiesceApi {
     pub poll: unsafe extern "C" fn(*mut c_void, *mut u8) -> Status,
 }
 pub type ModuleQuiesceEntry = unsafe extern "C" fn() -> *const ModuleQuiesceApi;
+
+/// Optional shutdown announcement, exported as amaterasu_module_shutdown_v1.
+/// The host calls this once for every module before any quiescence poll. The
+/// remaining milliseconds are one shared shutdown budget, never a renewable
+/// per-module timeout. Modules may close admission and retain an absolute
+/// deadline, but must keep serving owned work and defer provider cleanup until
+/// their dependency-ordered ModuleQuiesceApi poll.
+/// Calls are bounded, nonblocking, serialized with ModuleApi, and borrow its
+/// existing live instance. Announcement does not establish safe destruction.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ModuleShutdownApi {
+    pub header: AbiHeader,
+    pub prepare: unsafe extern "C" fn(*mut c_void, u64) -> Status,
+}
+pub type ModuleShutdownEntry = unsafe extern "C" fn() -> *const ModuleShutdownApi;
 
 /// Optional amaterasu_runtime_wait_v1 contract. Observe before ticking modules,
 /// then wait against that generation so completions during the tick are retained.
@@ -156,6 +177,16 @@ pub struct RuntimeApi {
 pub type ModuleEntry = unsafe extern "C" fn() -> *const ModuleApi;
 pub type RuntimeEntry = unsafe extern "C" fn() -> *const RuntimeApi;
 
+mod direct;
+mod trace;
+pub use direct::{
+    DirectCallHandler, ModuleDirectApi, ModuleDirectEntry, RuntimeDirectApi, RuntimeDirectEntry,
+};
+pub use trace::{
+    MAX_TRACE_NAME_BYTES, MAX_TRACE_RECORDS_PER_CALL, TRACE_DISCARD, TRACE_END, TRACE_MARK,
+    TRACE_SPAN, TraceRecord, TraceSink, TraceSinkApi,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,13 +209,24 @@ mod tests {
         assert_eq!(size_of::<ReplySink>(), 16);
         assert_eq!(size_of::<HostApi>(), 32);
         assert_eq!(size_of::<ModuleApi>(), 48);
+        assert_eq!(size_of::<ModuleQuiesceApi>(), 24);
+        assert_eq!(size_of::<ModuleShutdownApi>(), 24);
         assert_eq!(size_of::<RuntimeApi>(), 40);
+        assert_eq!(size_of::<TraceRecord>(), 32);
+        assert_eq!(std::mem::offset_of!(TraceRecord, timestamp_us), 16);
+        assert_eq!(std::mem::offset_of!(TraceRecord, track), 24);
+        assert_eq!(std::mem::offset_of!(TraceRecord, kind), 28);
+        assert_eq!(size_of::<TraceSinkApi>(), 48);
+        assert_eq!(std::mem::offset_of!(TraceSinkApi, record), 40);
+        assert_eq!(size_of::<ModuleDirectApi>(), 24);
+        assert_eq!(size_of::<RuntimeDirectApi>(), 32);
         assert_eq!(size_of::<NativeInterface>(), 32);
         assert_eq!(size_of::<NativeInterfaceQuery>(), 24);
         assert_eq!(size_of::<NativeServiceFactory>(), 32);
         assert_eq!(std::mem::offset_of!(NativeInterface, context), 16);
         assert_eq!(std::mem::offset_of!(NativeServiceFactory, bind), 24);
         assert_eq!(std::mem::offset_of!(ModuleApi, create), 16);
+        assert_eq!(std::mem::offset_of!(ModuleShutdownApi, prepare), 16);
     }
 }
 

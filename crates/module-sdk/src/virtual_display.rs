@@ -19,8 +19,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub const SERVICE: &str = "amaterasu.virtual-display/1";
 
 /// How an owned virtual output joins the desktop, named after Vibeshine's
-/// `virtual_display_layout`. Its isolated and primary-only variants are not
-/// implemented and are refused when settings are parsed.
+/// `virtual_display_layout`. Providers must reject unsupported layouts before
+/// native effects; parsing a layout is not a capability assertion.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum VirtualDisplayLayout {
@@ -29,6 +29,12 @@ pub enum VirtualDisplayLayout {
     Exclusive,
     /// The other displays stay on and the owned output extends the desktop.
     Extended,
+    /// Extend the desktop and make the owned output primary.
+    ExtendedPrimary,
+    /// Extend the desktop with the owned output separated from other outputs.
+    ExtendedIsolated,
+    /// Isolate the owned output and make it primary.
+    ExtendedPrimaryIsolated,
 }
 
 fn present_integer<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
@@ -36,6 +42,10 @@ where
     D: Deserializer<'de>,
 {
     i32::deserialize(deserializer).map(Some)
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -129,6 +139,10 @@ pub enum Operation {
         borrow_id: String,
     },
     Create {
+        /// Restrict the Windows driver's catalog to this client's resolution.
+        /// Requires producer control 3.8 and a private owning session.
+        #[serde(default, skip_serializing_if = "is_false")]
+        requested_resolution_only: bool,
         #[serde(default)]
         hdr_enabled: bool,
         identity: String,
@@ -171,6 +185,8 @@ pub enum Operation {
 /// Provider-neutral specification returned by trusted owner-target verification.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct OwnedTargetSpecification {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub requested_resolution_only: bool,
     pub identity: String,
     pub width: u32,
     pub height: u32,
@@ -251,6 +267,7 @@ mod tests {
     #[test]
     fn optional_scale_preserves_omission_and_rejects_explicit_null() {
         let request = Operation::Create {
+            requested_resolution_only: false,
             hdr_enabled: false,
             identity: "00000000-0000-0000-0000-000000000001".into(),
             width: 1920,
@@ -268,5 +285,37 @@ mod tests {
         assert!(serde_json::from_value::<Operation>(wire.clone()).is_ok());
         wire["dd_virtual_display_scale"] = json!(null);
         assert!(serde_json::from_value::<Operation>(wire).is_err());
+    }
+
+    #[test]
+    fn private_catalog_is_explicit_and_preserved_in_create_and_target_proof() {
+        let legacy = json!({"action":"create","identity":"00000000-0000-0000-0000-000000000001",
+            "width":1920,"height":1080,"refresh_millihz":60000,"name":"Monitor","hdr_enabled":false});
+        let parsed: Operation = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(
+            serde_json::to_value(parsed)
+                .unwrap()
+                .get("requested_resolution_only")
+                .is_none()
+        );
+        let mut private = legacy;
+        private["requested_resolution_only"] = json!(true);
+        let parsed: Operation = serde_json::from_value(private.clone()).unwrap();
+        assert_eq!(
+            serde_json::to_value(parsed).unwrap()["requested_resolution_only"],
+            true
+        );
+        private["requested_resolution_only"] = json!(null);
+        assert!(serde_json::from_value::<Operation>(private).is_err());
+
+        let proof = json!({"ok":true,"owned":true,"target_id":"opaque-target","active":false,
+            "specification":{"identity":"owned-id","width":1920,"height":1080,"refresh_millihz":60000,
+            "name":"Monitor","hdr_enabled":false,"requested_resolution_only":true}});
+        assert!(
+            owner_target_from_reply(proof, "owned-id")
+                .unwrap()
+                .specification
+                .requested_resolution_only
+        );
     }
 }
