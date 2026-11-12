@@ -7,6 +7,8 @@ members = [
     "crates/data-plane",
     "crates/extension-api",
     "crates/gamestream",
+    "crates/input-companion",
+    "crates/input-policy",
     "crates/media",
     "crates/module-sdk",
     "crates/module-testkit",
@@ -33,6 +35,8 @@ amaterasu-contracts = { path = "crates/contracts" }
 amaterasu-data-plane = { path = "crates/data-plane" }
 amaterasu-extension-api = { path = "crates/extension-api" }
 amaterasu-gamestream = { path = "crates/gamestream" }
+amaterasu-input-companion = { path = "crates/input-companion" }
+amaterasu-input-policy = { path = "crates/input-policy" }
 amaterasu-media = { path = "crates/media" }
 amaterasu-module-sdk = { path = "crates/module-sdk" }
 amaterasu-module-testkit = { path = "crates/module-testkit" }

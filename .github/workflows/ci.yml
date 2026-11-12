@@ -1,0 +1,45 @@
+name: SDK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwayland-dev libdrm-dev libgbm-dev libegl1-mesa-dev libgles2-mesa-dev libpulse-dev pkg-config
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: C header layout
+        if: runner.os != 'Windows'
+        run: |
+          for source in sdk/tests/*_layout.c; do
+            cc -std=c11 -Wall -Wextra -Werror -fsyntax-only -Isdk/include "$source"
+          done
+      - name: C logging helper
+        if: runner.os != 'Windows'
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Isdk/include sdk/tests/logging.c -o "$RUNNER_TEMP/check-sdk-logging"
+          "$RUNNER_TEMP/check-sdk-logging"

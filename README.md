@@ -1,10 +1,10 @@
 # Amaterasu public SDK
 
-This source snapshot exports committed Amaterasu core `f42dc52e6b0f0435694a460d79725afcfb774712`.
+This source snapshot exports committed Amaterasu core `72eaf63f0a381c1118656d615ae6b4badd50b86f`.
 `SDK_EXPORT.json` records the exact source revision, dependency closure, exclusions
 and file hashes. No uncommitted host or provider edits are included.
 
-The workspace contains sixteen library crates and the service-guard example.
+The workspace contains eighteen library crates and the service-guard example.
 It includes current processing composition, provider adapters, tracing, bounded
 requests, client entitlements, transfer channels, frame metadata, profile and
 framing contracts. Runtime and module-testkit are reusable conformance libraries;

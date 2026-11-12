@@ -36,3 +36,18 @@ amaterasu-module-sdk = { git = "https://github.com/nonary-streams/amaterasu-sdk"
 Check interface identity, table size and versions; preserve cancellation and
 actual resource-retirement barriers. A provider claim or local queue admission
 is not evidence of remote delivery, hardware support or installed behavior.
+
+## Refreshing this snapshot
+
+The crates, headers, examples and guides here are exported from
+[Amaterasu](https://github.com/nonary-streams/amaterasu); edit them there. From
+a core checkout, `python3 scripts/export_sdk.py PATH_TO_THIS_CHECKOUT` copies
+the selection recorded in `SDK_EXPORT.json` from the core commit it is given,
+and rewrites the root manifest and the record. `--seed CRATE` adds a crate and
+everything it depends on; `--check` reports differences without writing.
+Update `Cargo.lock` with `cargo metadata` afterwards and run the checks above.
+
+Continuous integration runs those checks and the C header tests on Linux,
+Windows and macOS. Pushing a tag `vX.Y.Z` that matches the workspace version
+publishes the tagged source as a release once they pass. Module repositories
+name the commit they build against in their `sdk-revision` file.

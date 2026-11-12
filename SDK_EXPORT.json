@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "core_source_commit": "f42dc52e6b0f0435694a460d79725afcfb774712",
-  "sdk_parent_commit": "800e1c6e4e20c2f949b3438af27f2f080caa10d6",
+  "core_source_commit": "72eaf63f0a381c1118656d615ae6b4badd50b86f",
+  "sdk_parent_commit": "b494557e0333fd68a0de9a5c968b4b3dbeb8c5ca",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Exact committed source snapshot; source publication does not qualify signed packages, native hardware or client playback.",
   "seed_crates": [
@@ -10,7 +10,9 @@
     "module-sdk",
     "media",
     "storage",
-    "windows-capture-geometry"
+    "windows-capture-geometry",
+    "input-policy",
+    "input-companion"
   ],
   "workspace_members": [
     "crates/abi",
@@ -19,6 +21,8 @@
     "crates/data-plane",
     "crates/extension-api",
     "crates/gamestream",
+    "crates/input-companion",
+    "crates/input-policy",
     "crates/media",
     "crates/module-sdk",
     "crates/module-testkit",
@@ -33,9 +37,51 @@
   ],
   "local_dependency_edges": [
     {
-      "from": "crates/windows-capture-geometry",
+      "from": "crates/contracts",
+      "name": "amaterasu-extension-api",
+      "to": "crates/extension-api",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/data-plane",
+      "name": "amaterasu-abi",
+      "to": "crates/abi",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/extension-api",
+      "name": "amaterasu-configuration-schema",
+      "to": "crates/configuration-schema",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/gamestream",
+      "name": "amaterasu-contracts",
+      "to": "crates/contracts",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/gamestream",
       "name": "amaterasu-media",
       "to": "crates/media",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/gamestream",
+      "name": "amaterasu-timing-metrics",
+      "to": "crates/timing-metrics",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/gamestream",
+      "name": "amaterasu-abi",
+      "to": "crates/abi",
+      "kind": "dev-dependencies"
+    },
+    {
+      "from": "crates/input-companion",
+      "name": "amaterasu-storage",
+      "to": "crates/storage",
       "kind": "dependencies"
     },
     {
@@ -45,18 +91,6 @@
       "kind": "dependencies"
     },
     {
-      "from": "crates/storage",
-      "name": "amaterasu-timing-metrics",
-      "to": "crates/timing-metrics",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/module-sdk",
-      "name": "amaterasu-timing-metrics",
-      "to": "crates/timing-metrics",
-      "kind": "dependencies"
-    },
-    {
       "from": "crates/module-sdk",
       "name": "amaterasu-abi",
       "to": "crates/abi",
@@ -64,32 +98,14 @@
     },
     {
       "from": "crates/module-sdk",
-      "name": "amaterasu-network-api",
-      "to": "crates/network-api",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/module-sdk",
-      "name": "amaterasu-process-api",
-      "to": "crates/process-api",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/module-sdk",
-      "name": "amaterasu-network-sockets",
-      "to": "crates/network-sockets",
+      "name": "amaterasu-contracts",
+      "to": "crates/contracts",
       "kind": "dependencies"
     },
     {
       "from": "crates/module-sdk",
       "name": "amaterasu-data-plane",
       "to": "crates/data-plane",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/module-sdk",
-      "name": "amaterasu-contracts",
-      "to": "crates/contracts",
       "kind": "dependencies"
     },
     {
@@ -102,6 +118,30 @@
       "from": "crates/module-sdk",
       "name": "amaterasu-media",
       "to": "crates/media",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/module-sdk",
+      "name": "amaterasu-network-api",
+      "to": "crates/network-api",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/module-sdk",
+      "name": "amaterasu-network-sockets",
+      "to": "crates/network-sockets",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/module-sdk",
+      "name": "amaterasu-process-api",
+      "to": "crates/process-api",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/module-sdk",
+      "name": "amaterasu-timing-metrics",
+      "to": "crates/timing-metrics",
       "kind": "dependencies"
     },
     {
@@ -129,73 +169,7 @@
       "kind": "dependencies"
     },
     {
-      "from": "crates/runtime",
-      "name": "amaterasu-timing-metrics",
-      "to": "crates/timing-metrics",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/runtime",
-      "name": "amaterasu-abi",
-      "to": "crates/abi",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/runtime",
-      "name": "amaterasu-contracts",
-      "to": "crates/contracts",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/runtime",
-      "name": "amaterasu-gamestream",
-      "to": "crates/gamestream",
-      "kind": "dev-dependencies"
-    },
-    {
-      "from": "crates/runtime",
-      "name": "amaterasu-module-sdk",
-      "to": "crates/module-sdk",
-      "kind": "dev-dependencies"
-    },
-    {
-      "from": "crates/gamestream",
-      "name": "amaterasu-timing-metrics",
-      "to": "crates/timing-metrics",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/gamestream",
-      "name": "amaterasu-contracts",
-      "to": "crates/contracts",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/gamestream",
-      "name": "amaterasu-media",
-      "to": "crates/media",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/gamestream",
-      "name": "amaterasu-abi",
-      "to": "crates/abi",
-      "kind": "dev-dependencies"
-    },
-    {
-      "from": "crates/contracts",
-      "name": "amaterasu-extension-api",
-      "to": "crates/extension-api",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/extension-api",
-      "name": "amaterasu-configuration-schema",
-      "to": "crates/configuration-schema",
-      "kind": "dependencies"
-    },
-    {
-      "from": "crates/data-plane",
+      "from": "crates/network-api",
       "name": "amaterasu-abi",
       "to": "crates/abi",
       "kind": "dependencies"
@@ -213,15 +187,51 @@
       "kind": "dependencies"
     },
     {
-      "from": "crates/network-api",
+      "from": "crates/process-api",
       "name": "amaterasu-abi",
       "to": "crates/abi",
       "kind": "dependencies"
     },
     {
-      "from": "crates/process-api",
+      "from": "crates/runtime",
       "name": "amaterasu-abi",
       "to": "crates/abi",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/runtime",
+      "name": "amaterasu-contracts",
+      "to": "crates/contracts",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/runtime",
+      "name": "amaterasu-timing-metrics",
+      "to": "crates/timing-metrics",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/runtime",
+      "name": "amaterasu-gamestream",
+      "to": "crates/gamestream",
+      "kind": "dev-dependencies"
+    },
+    {
+      "from": "crates/runtime",
+      "name": "amaterasu-module-sdk",
+      "to": "crates/module-sdk",
+      "kind": "dev-dependencies"
+    },
+    {
+      "from": "crates/storage",
+      "name": "amaterasu-timing-metrics",
+      "to": "crates/timing-metrics",
+      "kind": "dependencies"
+    },
+    {
+      "from": "crates/windows-capture-geometry",
+      "name": "amaterasu-media",
+      "to": "crates/media",
       "kind": "dependencies"
     }
   ],
@@ -618,6 +628,102 @@
       "sha256": "75360c096c81c9264360b10def8e1d05b90f9ba93a20538ca6a29d8c358ca77d"
     },
     {
+      "path": "crates/input-companion/Cargo.toml",
+      "sha256": "c6c14f199b291ae31df173caed7f6d560354482f94493f7c97033b6322d18361"
+    },
+    {
+      "path": "crates/input-companion/README.md",
+      "sha256": "dd94ede66910a157aab2c84096118d30deca1cb7dc60b51a51d7ac3a13f45b3d"
+    },
+    {
+      "path": "crates/input-companion/src/bin/amaterasu-input-companion.rs",
+      "sha256": "c5b7526b7f51b8267bdcae8e226cafef26734ce346f8daca770173d0b2e5fdf8"
+    },
+    {
+      "path": "crates/input-companion/src/lib.rs",
+      "sha256": "6b3a8ac8bd7770085c271e62af5f73cda4e06282222ee147f2bf59ad08eb4c86"
+    },
+    {
+      "path": "crates/input-companion/src/linux_client.rs",
+      "sha256": "240086c9557512be4ef8661ca4a9d37a8cc37dc6881b477a241528c1f19c192d"
+    },
+    {
+      "path": "crates/input-companion/src/linux_client/tests.rs",
+      "sha256": "5c1f70979824d230f864dbc368088c9f0dc8936446a6212f8c3b18afc7f3bdca"
+    },
+    {
+      "path": "crates/input-companion/src/linux_service.rs",
+      "sha256": "2990bb831af31fc7e30c9ed6e3d806f2ebe640fd787e28080837ac2aa380025a"
+    },
+    {
+      "path": "crates/input-companion/src/model.rs",
+      "sha256": "f18f0dec6180aa6dbd5e0f641b05b2f7abf3f2f9d91bac1ae5e616363ca91c46"
+    },
+    {
+      "path": "crates/input-companion/src/permit.rs",
+      "sha256": "090c38428820413c256ff18f2c0214081e72e93a00e0318e85bd8fa8761a6032"
+    },
+    {
+      "path": "crates/input-companion/src/service_threads.rs",
+      "sha256": "f1649192b9734ce3d14cf7c51f633ef1fa1eb85972a38f5c5b2728742ecc27db"
+    },
+    {
+      "path": "crates/input-companion/src/session.rs",
+      "sha256": "45cc1d83c5cf24e5e4d902df3ff37dbdcd4c855e926418d5cf25f65342a788e4"
+    },
+    {
+      "path": "crates/input-companion/src/tests.rs",
+      "sha256": "b66097d768420514b2f31b9d0e97321d6252880248430c05f614661179229e26"
+    },
+    {
+      "path": "crates/input-companion/src/vhf.rs",
+      "sha256": "ca7dd6b76b7f19d65ebbe087ffd5885712b09cfc1284cf9d32019fbf1c790af7"
+    },
+    {
+      "path": "crates/input-companion/src/windows_identity.rs",
+      "sha256": "1c6a83ee06461eaa3dc3a2b65e166ed50c00f92cdcc653004af263a8ff6c68ae"
+    },
+    {
+      "path": "crates/input-companion/src/windows_pipe.rs",
+      "sha256": "23012661c42a4d600b974b9ad547d5a54ba34c14b6c313a1a1d4abf39f1058bc"
+    },
+    {
+      "path": "crates/input-companion/src/windows_pipe_state.rs",
+      "sha256": "b1eb08547d4edf0682ac039daeff3ff39bf36b51742a0a88dd1181f5a6996e91"
+    },
+    {
+      "path": "crates/input-companion/src/windows_service.rs",
+      "sha256": "b27fc9c7c358b2c58b92d0fba5abd507fbb5f68f94dd9c8b584cfb1f3b264060"
+    },
+    {
+      "path": "crates/input-companion/src/windows_vhf.rs",
+      "sha256": "5984361e966403e11377f7c0cf8f7503fbd3fec2b76bcea748ddf39f2afe5512"
+    },
+    {
+      "path": "crates/input-companion/src/worker_client.rs",
+      "sha256": "65ef02953c042e8b107e12c6a1da49b4904841311065e8e6c88ce8ae84c4af27"
+    },
+    {
+      "path": "crates/input-companion/src/worker_client/tests.rs",
+      "sha256": "16ebf8b9ae0eded3b94240e2331940652c8638ed27cdc83e271507eda245d838"
+    },
+    {
+      "path": "crates/input-companion/src/worker_server.rs",
+      "sha256": "41a6d9abcb14002ea1f27850f41fcaf8fbda11ba93479b8e07ea0420b2859e71"
+    },
+    {
+      "path": "crates/input-companion/src/worker_server/tests.rs",
+      "sha256": "4e48e43bff5d89b1224bca42bf26813c536c597d8e9531dadab2180e83720db1"
+    },
+    {
+      "path": "crates/input-policy/Cargo.toml",
+      "sha256": "49c4ef6ff069044800449b65722d8b32e1e2f2231749d825cc4ced5a97a53ec7"
+    },
+    {
+      "path": "crates/input-policy/src/lib.rs",
+      "sha256": "84292e03e1c52e95f6e6e420fb61841a9f8a4deb3992e40f05f59ba10a64c8bd"
+    },
+    {
       "path": "crates/media/Cargo.toml",
       "sha256": "6158944465d66131d5ccb61cc93070a0d7b899fe03329249fb802d7a02c0e51f"
     },
@@ -839,7 +945,7 @@
     },
     {
       "path": "crates/module-sdk/src/capture/connection.rs",
-      "sha256": "09c67ee566267b807bf82374991bffe62a890b313321543446ef3bee84f250e6"
+      "sha256": "bf5430a7c16adbd8cf9ba921eeb4425b70cc7b68e19c40c8718cb1a3928aafb5"
     },
     {
       "path": "crates/module-sdk/src/capture/cpu_lease.rs",
@@ -1047,11 +1153,11 @@
     },
     {
       "path": "crates/module-sdk/src/frame_processing/session.rs",
-      "sha256": "8f5e460ae27fc41bb31b5cd88fad322794304840f424908a8c1d4ee1210e0c89"
+      "sha256": "baba17ccac0cb4585909c0f546eb36b2d7577f565b890931b17209e1ad2a9e06"
     },
     {
       "path": "crates/module-sdk/src/frame_processing/tests.rs",
-      "sha256": "4fdfb4c3b082292d086b0f338574e4f2824fc51271d176dd68d324ff87c4fc9f"
+      "sha256": "24eae947c4eb00a24263d576890106aa114982814993f44896947630d4f1cf88"
     },
     {
       "path": "crates/module-sdk/src/hooks.rs",
@@ -1751,7 +1857,7 @@
     },
     {
       "path": "docs/gpu-processing-sdk.md",
-      "sha256": "18592c863815069c517503cee3410a03e388e23c86be937db5c490c7995c9c04"
+      "sha256": "5a6c05cf6d4cf399ee43760268853c712f45b1922f8fb6555d50c59554b66ad0"
     },
     {
       "path": "docs/input-batch-contract.md",
@@ -1942,19 +2048,19 @@
     {
       "path": "modules/display/metadata/api.json",
       "source_repository": "display",
-      "source_commit": "abb43522e9e01bd4d5ec12f491a64bd839fc11c9",
+      "source_commit": "f3f03d5b9be26040d174fdb557e34d46da90e51a",
       "sha256": "c210e98fffbc7b0c3d3ed51a56aa89577e6814860e60f6d169e65a4b68825d05"
     },
     {
       "path": "modules/catalog/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "f42dc52e6b0f0435694a460d79725afcfb774712",
+      "source_commit": "main",
       "sha256": "6373a5dea9d97f6f152708d3bbdaf3b77befcecae605ebb48a31a6f3700bf189"
     },
     {
       "path": "modules/nvhttp/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "f42dc52e6b0f0435694a460d79725afcfb774712",
+      "source_commit": "main",
       "sha256": "a79dc63198d0a8e59307800d99a815c9cc593228008b354aedaa7e25f9b5c86e"
     },
     {
