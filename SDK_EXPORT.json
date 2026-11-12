@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "core_source_commit": "72eaf63f0a381c1118656d615ae6b4badd50b86f",
-  "sdk_parent_commit": "b494557e0333fd68a0de9a5c968b4b3dbeb8c5ca",
+  "core_source_commit": "2d2779a26dc5bedf64c3805c759c8906e2714d07",
+  "sdk_parent_commit": "9cc67a019f87382880bc586c0854c3194c48ee2f",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Exact committed source snapshot; source publication does not qualify signed packages, native hardware or client playback.",
   "seed_crates": [
@@ -12,7 +12,8 @@
     "storage",
     "windows-capture-geometry",
     "input-policy",
-    "input-companion"
+    "input-companion",
+    "rtx-runtime"
   ],
   "workspace_members": [
     "crates/abi",
@@ -29,6 +30,7 @@
     "crates/network-api",
     "crates/network-sockets",
     "crates/process-api",
+    "crates/rtx-runtime",
     "crates/runtime",
     "crates/storage",
     "crates/timing-metrics",
@@ -191,6 +193,24 @@
       "name": "amaterasu-abi",
       "to": "crates/abi",
       "kind": "dependencies"
+    },
+    {
+      "from": "crates/rtx-runtime",
+      "name": "amaterasu-abi",
+      "to": "crates/abi",
+      "kind": "dev-dependencies"
+    },
+    {
+      "from": "crates/rtx-runtime",
+      "name": "amaterasu-module-sdk",
+      "to": "crates/module-sdk",
+      "kind": "dev-dependencies"
+    },
+    {
+      "from": "crates/rtx-runtime",
+      "name": "amaterasu-network-sockets",
+      "to": "crates/network-sockets",
+      "kind": "dev-dependencies"
     },
     {
       "from": "crates/runtime",
@@ -1568,6 +1588,26 @@
       "sha256": "35604598c2549209f3e6ea094fb0eb96737fa48b6c6360c892b056b2e846620f"
     },
     {
+      "path": "crates/rtx-runtime/Cargo.toml",
+      "sha256": "34f425098714fee8feeeb0ccf5561ac0440fdfdb279e02543228fcc5098a404a"
+    },
+    {
+      "path": "crates/rtx-runtime/src/lib.rs",
+      "sha256": "93f61f5500e67e10469eaf8a8fc3093cb4bf47c82f7b3be3b523ae699c6a7d02"
+    },
+    {
+      "path": "crates/rtx-runtime/src/remote.rs",
+      "sha256": "8acb6048cb21d647cc735b00e53b2cd8229d7fcec788d6cb80da0c0785f9cac9"
+    },
+    {
+      "path": "crates/rtx-runtime/src/zip_guard.rs",
+      "sha256": "147e84337eb3ebc4de467fb93ae4a0b1ddf4e609f561067c97263bf2f55b463b"
+    },
+    {
+      "path": "crates/rtx-runtime/tests/live_wheel.rs",
+      "sha256": "a542f794c0671a3eb41183246020c4228be8be98adbd9022a9fadc56b9963652"
+    },
+    {
       "path": "crates/runtime/Cargo.toml",
       "sha256": "62d502e74c5a0b6e6a3b3163f23957b517a77c69d13a9a5a6a8942b4ecc2f249"
     },
@@ -1849,7 +1889,7 @@
     },
     {
       "path": "docs/encoder-plugin-sdk.md",
-      "sha256": "b3241e9f749abe7c3228e5cd67bb3a7c8f0387cc5fe93f514b883463463d3657"
+      "sha256": "721aca91c387531425064de69fbabba00f83a5b56125e796a97f20e9b727c8fb"
     },
     {
       "path": "docs/flow-tracing.md",

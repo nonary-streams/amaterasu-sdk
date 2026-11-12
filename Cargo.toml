@@ -15,6 +15,7 @@ members = [
     "crates/network-api",
     "crates/network-sockets",
     "crates/process-api",
+    "crates/rtx-runtime",
     "crates/runtime",
     "crates/storage",
     "crates/timing-metrics",
@@ -43,6 +44,7 @@ amaterasu-module-testkit = { path = "crates/module-testkit" }
 amaterasu-network-api = { path = "crates/network-api" }
 amaterasu-network-sockets = { path = "crates/network-sockets" }
 amaterasu-process-api = { path = "crates/process-api" }
+amaterasu-rtx-runtime = { path = "crates/rtx-runtime" }
 amaterasu-runtime = { path = "crates/runtime" }
 amaterasu-storage = { path = "crates/storage" }
 amaterasu-timing-metrics = { path = "crates/timing-metrics" }
