@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "core_source_commit": "7edc4a3814046b3c6530f605cc16c60e2bc6a464",
-  "sdk_parent_commit": "777a78233a78f827936e8b5b5f7c515ffd20f50a",
+  "core_source_commit": "b8dc1d6c024f890974f09e8a819b740e92841964",
+  "sdk_parent_commit": "fdcf1d84af451bd73852bf82c19b88d7c74097b6",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Exact committed source snapshot; source publication does not qualify signed packages, native hardware or client playback.",
   "seed_crates": [
@@ -315,7 +315,7 @@
     },
     {
       "path": "crates/contracts/src/processing_composition.rs",
-      "sha256": "933b0a3313e8567c616feb02b058de096038d2015c0cedf65a4914d01bee2118"
+      "sha256": "19e70a6a41985f0da6d2be1ebd062dfffd8299d4a4b3ea5dbc6f4fbfee67780e"
     },
     {
       "path": "crates/contracts/src/virtual_display.rs",
@@ -991,7 +991,7 @@
     },
     {
       "path": "crates/module-sdk/src/capture.rs",
-      "sha256": "23e709fbbc91442e5c6e8a61c069734dd6ceec1cfde2f46fc4dfe5605d67a349"
+      "sha256": "31ed6ceafc37ca39e5a9fb2d0621f448e0f7acfbe52456044dbbf28a990f907a"
     },
     {
       "path": "crates/module-sdk/src/capture/connection.rs",
@@ -1375,7 +1375,7 @@
     },
     {
       "path": "crates/module-sdk/src/processing_composition.rs",
-      "sha256": "bd4738b3da37c465c43d4638dcfa33310e41ae11d32cd2432e7ee8ffa6cf68bf"
+      "sha256": "7b05c742b2b15a5337e035237e289b445b97a4eea8b5bcb8c3389f565cfae738"
     },
     {
       "path": "crates/module-sdk/src/processing_provider.rs",
@@ -1439,7 +1439,7 @@
     },
     {
       "path": "crates/module-sdk/src/stream_lifecycle.rs",
-      "sha256": "4f296142486ce83ffb651297eacd7632def10b4bfea9dd78468660de01607437"
+      "sha256": "89666aafdb0e5fc27bec7cd687cb8a940539dd005c52ab835e2dcf97915dbfc6"
     },
     {
       "path": "crates/module-sdk/src/stream_lifecycle/feed.rs",
@@ -1451,7 +1451,7 @@
     },
     {
       "path": "crates/module-sdk/src/stream_lifecycle/termination.rs",
-      "sha256": "b1bd99309924ca7c25bc9b2064f3bf12e1b488f44bf8ae8cb62e0b54266dd3df"
+      "sha256": "2619db74e7237043edb3da4bfe5c857be8a98b9750ffa73eb2ac3a0cb4db2dea"
     },
     {
       "path": "crates/module-sdk/src/stream_lifecycle/tests.rs",
@@ -1943,7 +1943,7 @@
     },
     {
       "path": "docs/capture-plugin-sdk.md",
-      "sha256": "661faac3a4870ff76337744a1b285a0d387fef8630258a9886173a056c47484d"
+      "sha256": "b21ae27d9f106a0908a4f43ff4f0d6f0629f5ff849587f12f5cacc747a27a485"
     },
     {
       "path": "docs/capture-source-preflight.md",
@@ -2019,7 +2019,7 @@
     },
     {
       "path": "docs/session-extension-api.md",
-      "sha256": "6c46a209838fe96b4c347e1b8fde6047fc537bbc48449bf6976249de88ce9944"
+      "sha256": "f8d010f7c33fb58ccb218b58cd5cd3ca896c41eb1af6907390bac7066602d2e0"
     },
     {
       "path": "docs/session-presentation-sdk.md",
@@ -2176,13 +2176,13 @@
     {
       "path": "modules/catalog/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "7edc4a3814046b3c6530f605cc16c60e2bc6a464",
+      "source_commit": "b8dc1d6c024f890974f09e8a819b740e92841964",
       "sha256": "6373a5dea9d97f6f152708d3bbdaf3b77befcecae605ebb48a31a6f3700bf189"
     },
     {
       "path": "modules/nvhttp/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "7edc4a3814046b3c6530f605cc16c60e2bc6a464",
+      "source_commit": "b8dc1d6c024f890974f09e8a819b740e92841964",
       "sha256": "a79dc63198d0a8e59307800d99a815c9cc593228008b354aedaa7e25f9b5c86e"
     },
     {
@@ -2194,7 +2194,7 @@
     {
       "path": "scripts/pyrowave/profile.json",
       "source_repository": "core",
-      "source_commit": "7edc4a3814046b3c6530f605cc16c60e2bc6a464",
+      "source_commit": "b8dc1d6c024f890974f09e8a819b740e92841964",
       "sha256": "07aca821026efbebc611e773677135c1f81bed5c98a57cf40357883d5c2083f9"
     }
   ],
