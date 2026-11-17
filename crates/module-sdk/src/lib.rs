@@ -8,6 +8,7 @@ pub mod diagnostics;
 pub mod display;
 pub mod display_profile;
 pub mod display_settings;
+pub mod drivers;
 pub mod encode;
 pub mod events;
 pub mod exports;
@@ -36,6 +37,8 @@ pub mod retained_options;
 pub mod retirement;
 pub mod service_worker;
 pub mod session_presentation;
+pub mod stream_lifecycle;
+pub mod stream_warnings;
 pub mod threading;
 pub mod trace;
 pub mod transport;
@@ -48,7 +51,7 @@ pub use native::NativeBinding;
 
 pub use amaterasu_abi as abi;
 pub use amaterasu_contracts::encoder::{
-    DynamicRange, EncoderBackend, EncoderIdentity, EncoderSelection, NvencSettings,
+    ChromaSampling, DynamicRange, EncoderBackend, EncoderIdentity, EncoderSelection, NvencSettings,
     NvencSettingsOverrides, NvencSplitEncode, NvencTwoPass, SOFTWARE_ENCODER_ID,
     SoftwareEncoderOptions, VideoCodec, VideoStreamFormat, validate_min_threads,
     validate_software_options,

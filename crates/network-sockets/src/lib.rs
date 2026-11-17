@@ -52,7 +52,7 @@ struct Resource {
 }
 #[repr(C)]
 struct Binding {
-    api: net::NetworkApiV1_2,
+    api: net::NetworkApiV1_3,
     shared: Arc<Shared>,
     resources: Mutex<BTreeMap<u64, Arc<Resource>>>,
     next: AtomicU64,
@@ -213,8 +213,8 @@ unsafe extern "C" fn bind(
         };
         if !query.header.supports::<NativeInterfaceQuery>()
             || query.interface_major != net::MAJOR
-            || query.min_minor > net::SHARED_UDP_MINOR
-            || query.min_size > size_of::<net::NetworkApiV1_2>() as u32
+            || query.min_minor > net::REVERSE_DNS_MINOR
+            || query.min_size > size_of::<net::NetworkApiV1_3>() as u32
         {
             return Err(net::UNSUPPORTED);
         }
@@ -229,44 +229,47 @@ unsafe extern "C" fn bind(
         }
         let _admission = handle_admission(&factory.shared)?;
         let mut binding = Box::new(Binding {
-            api: net::NetworkApiV1_2 {
-                v1_1: net::NetworkApiV1_1 {
-                    v1: net::NetworkApi {
-                        base: NativeInterface {
-                            header: AbiHeader {
-                                size: size_of::<net::NetworkApiV1_2>() as u32,
-                                major: net::MAJOR,
-                                minor: net::SHARED_UDP_MINOR,
+            api: net::NetworkApiV1_3 {
+                v1_2: net::NetworkApiV1_2 {
+                    v1_1: net::NetworkApiV1_1 {
+                        v1: net::NetworkApi {
+                            base: NativeInterface {
+                                header: AbiHeader {
+                                    size: size_of::<net::NetworkApiV1_3>() as u32,
+                                    major: net::MAJOR,
+                                    minor: net::REVERSE_DNS_MINOR,
+                                },
+                                context: std::ptr::null_mut(),
+                                release: Some(release),
                             },
-                            context: std::ptr::null_mut(),
-                            release: Some(release),
+                            capabilities,
+                            resolve,
+                            interfaces,
+                            tcp_listen,
+                            tcp_connect,
+                            udp_bind,
+                            accept,
+                            local_addr,
+                            peer_addr,
+                            read,
+                            peek,
+                            write,
+                            recv_from,
+                            send_to,
+                            connect_udp,
+                            set_option,
+                            get_option,
+                            join_multicast,
+                            send_batch,
+                            shutdown,
+                            close,
                         },
-                        capabilities,
-                        resolve,
-                        interfaces,
-                        tcp_listen,
-                        tcp_connect,
-                        udp_bind,
-                        accept,
-                        local_addr,
-                        peer_addr,
-                        read,
-                        peek,
-                        write,
-                        recv_from,
-                        send_to,
-                        connect_udp,
-                        set_option,
-                        get_option,
-                        join_multicast,
-                        send_batch,
-                        shutdown,
-                        close,
+                        recv_from_timed: diagnostics::recv_from_timed,
+                        socket_diagnostics: diagnostics::socket_diagnostics,
                     },
-                    recv_from_timed: diagnostics::recv_from_timed,
-                    socket_diagnostics: diagnostics::socket_diagnostics,
+                    udp_bind_shared,
                 },
-                udp_bind_shared,
+                reverse_resolve,
             },
             shared: factory.shared.clone(),
             resources: Mutex::new(BTreeMap::new()),
@@ -512,7 +515,8 @@ unsafe extern "C" fn capabilities(context: *mut c_void, out: *mut net::Capabilit
                         | net::MULTICAST
                         | net::INTERFACES
                         | net::DATAGRAM_DIAGNOSTICS
-                        | net::SHARED_UDP,
+                        | net::SHARED_UDP
+                        | net::REVERSE_DNS,
                     max_io_bytes: net::MAX_IO_BYTES as u64,
                     max_handles: binding.shared.max_handles,
                     max_batch: net::MAX_BATCH as u32,
@@ -552,6 +556,37 @@ unsafe extern "C" fn resolve(
             unsafe { out.add(index).write(to_address(address)) }
         }
         unsafe { output(count, addresses.len()) }
+    })
+}
+unsafe extern "C" fn reverse_resolve(
+    context: *mut c_void,
+    address: net::Address,
+    timeout_ms: u32,
+    out: *mut u8,
+    capacity: usize,
+    count: *mut usize,
+) -> Status {
+    guarded(|| {
+        // SAFETY: runtime retains this provider binding for the call.
+        let binding = unsafe { binding(context)? };
+        if out.is_null() || count.is_null() || capacity == 0 || capacity > net::MAX_HOSTNAME_BYTES {
+            return Err(STATUS_INVALID_ARGUMENT);
+        }
+        let address = from_address(address)?.ip();
+        let hostname = binding
+            .shared
+            .resolver
+            .reverse_resolve(address, timeout_ms)
+            .map_err(io_status)?;
+        if hostname.len() > capacity {
+            return Err(net::RESOURCE_EXHAUSTED);
+        }
+        // SAFETY: caller provides capacity writable bytes, checked above; the
+        // provider-owned hostname does not alias the caller's output buffer.
+        unsafe {
+            std::ptr::copy_nonoverlapping(hostname.as_ptr(), out, hostname.len());
+            output(count, hostname.len())
+        }
     })
 }
 unsafe extern "C" fn interfaces(
@@ -825,12 +860,11 @@ unsafe extern "C" fn write(
         let count_value = match &resource.socket {
             SocketResource::Tcp(s) => {
                 let mut borrowed = s;
-                borrowed.write(buffer)
+                borrowed.write(buffer).map_err(io_status)?
             }
-            SocketResource::Udp(s) => s.send(buffer),
+            SocketResource::Udp(s) => s.send(buffer).map_err(udp_send_status)?,
             _ => return Err(net::UNSUPPORTED),
-        }
-        .map_err(io_status)?;
+        };
         unsafe { output(count, count_value) }
     })
 }
@@ -880,7 +914,7 @@ unsafe extern "C" fn send_to(
         };
         #[cfg(windows)]
         let _send_guard = send_guard(&resource)?;
-        let size = socket.send_to(buffer, peer).map_err(io_status)?;
+        let size = socket.send_to(buffer, peer).map_err(udp_send_status)?;
         unsafe { output(count, size) }
     })
 }
@@ -1016,6 +1050,22 @@ unsafe extern "C" fn join_multicast(
         .map_err(io_status)
     })
 }
+// A rejected UDP send has accepted no datagram. Buffer pressure can clear
+// on the next tick, so retain the caller's exact queued bytes for retry.
+// Keep this send-specific: allocation/bind/receive failures retain their
+// existing classifications, and persistent stalls still time out upstream.
+fn udp_send_status(error: io::Error) -> Status {
+    #[cfg(unix)]
+    if error.raw_os_error() == Some(libc::ENOBUFS) {
+        return net::WOULD_BLOCK;
+    }
+    #[cfg(windows)]
+    if error.raw_os_error() == Some(windows_sys::Win32::Networking::WinSock::WSAENOBUFS) {
+        return net::WOULD_BLOCK;
+    }
+    io_status(error)
+}
+
 unsafe extern "C" fn send_batch(
     context: *mut c_void,
     id: u64,
@@ -1048,10 +1098,10 @@ unsafe extern "C" fn send_batch(
         #[cfg(windows)]
         let sent = {
             let mut healthy = send_guard(&resource)?;
-            batch::send_serialized(socket, &buffers, &mut healthy).map_err(io_status)?
+            batch::send_serialized(socket, &buffers, &mut healthy).map_err(udp_send_status)?
         };
         #[cfg(not(windows))]
-        let sent = batch::send(socket, &buffers).map_err(io_status)?;
+        let sent = batch::send(socket, &buffers).map_err(udp_send_status)?;
         unsafe { output(count, sent) }
     })
 }
@@ -1096,6 +1146,47 @@ fn send_guard(resource: &Resource) -> Result<std::sync::MutexGuard<'_, bool>, St
 #[cfg(test)]
 mod status_tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn udp_send_buffer_exhaustion_is_retryable() {
+        assert_eq!(
+            udp_send_status(io::Error::from_raw_os_error(libc::ENOBUFS)),
+            net::WOULD_BLOCK
+        );
+        assert_ne!(
+            io_status(io::Error::from_raw_os_error(libc::ENOBUFS)),
+            net::WOULD_BLOCK
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn udp_send_buffer_exhaustion_is_retryable() {
+        let code = windows_sys::Win32::Networking::WinSock::WSAENOBUFS;
+        assert_eq!(
+            udp_send_status(io::Error::from_raw_os_error(code)),
+            net::WOULD_BLOCK
+        );
+        assert_ne!(
+            io_status(io::Error::from_raw_os_error(code)),
+            net::WOULD_BLOCK
+        );
+    }
+
+    #[test]
+    fn udp_send_errors_retain_critical_and_existing_retry_statuses() {
+        for (kind, status) in [
+            (io::ErrorKind::WouldBlock, net::WOULD_BLOCK),
+            (io::ErrorKind::Interrupted, net::INTERRUPTED),
+            (io::ErrorKind::PermissionDenied, net::PERMISSION_DENIED),
+            (io::ErrorKind::ConnectionReset, net::CONNECTION_RESET),
+            (io::ErrorKind::NetworkUnreachable, net::NETWORK_UNREACHABLE),
+            (io::ErrorKind::WriteZero, net::IO_ERROR),
+        ] {
+            assert_eq!(udp_send_status(kind.into()), status);
+        }
+    }
 
     #[test]
     fn unreachable_io_errors_have_provider_neutral_statuses() {

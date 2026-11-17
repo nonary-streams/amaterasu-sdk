@@ -589,6 +589,9 @@ fn host_state_context_is_available_only_to_trusted_state_consumers() {
         .principals
         .insert("amaterasu.management".into(), Grants::default());
     configuration.host_context = RuntimeHostContext {
+        running_modules: Vec::new(),
+        running_components: Vec::new(),
+        plugin_setup_pending: false,
         schema: 1,
         state_root: Some(r"C:\\ProgramData\\Amaterasu\\runtime\\user-state\\S-1-5-21-1".into()),
         package_root: Some(r"C:\\ProgramData\\Amaterasu\\packages".into()),
@@ -663,7 +666,10 @@ fn host_state_context_is_available_only_to_trusted_state_consumers() {
     else {
         panic!("management did not receive the running package digest");
     };
-    assert_eq!(payload, serde_json::json!({"digest":"a".repeat(64)}));
+    assert_eq!(
+        payload,
+        serde_json::json!({"digest":"a".repeat(64),"modules":[]})
+    );
     for caller in ["amaterasu.state", "amaterasu.audio", "other"] {
         assert!(matches!(
             broker.dispatch(caller, Command::GetPackageRoot {}),
@@ -3593,6 +3599,305 @@ fn package_activation_requires_host_capability_management_grant_and_bounded_queu
     );
 }
 
+/// A broker with package control, management's activation grant and one
+/// registered barrier provider.
+fn package_request_broker() -> Broker {
+    let mut config = RuntimeConfig {
+        host_lifecycle_control: true,
+        host_package_activation_control: true,
+        ..Default::default()
+    };
+    config
+        .principals
+        .insert(HOST_LIFECYCLE_CONTROL_PRINCIPAL.into(), Grants::default());
+    let grant = Grants {
+        call: names(&[HOST_PACKAGE_ACTIVATION_SERVICE]),
+        ..Default::default()
+    };
+    config
+        .principals
+        .insert("amaterasu.management".into(), grant.clone());
+    config.principals.insert("other".into(), grant);
+    config.principals.insert(
+        "example.stream-provider".into(),
+        Grants {
+            call: names(&[HOST_PACKAGE_BARRIER_SERVICE]),
+            ..Default::default()
+        },
+    );
+    let mut broker = Broker::new(config).unwrap();
+    assert!(
+        !broker
+            .dispatch(
+                "example.stream-provider",
+                Command::HostPackageBarrierRegister {}
+            )
+            .is_error()
+    );
+    broker
+}
+
+fn error_code(response: Response) -> Option<String> {
+    match response {
+        Response::Error { code, .. } => Some(code),
+        _ => None,
+    }
+}
+
+#[test]
+fn package_restore_waits_for_a_host_that_takes_restores_and_shares_the_activation_slot() {
+    use amaterasu_contracts::HostPackageRestore;
+    let request = HostPackageRestore {
+        manifest_digest: "2".repeat(64),
+        expected_active: "3".repeat(64),
+        expected_revision: "4".repeat(64),
+    };
+    let restore = || Command::HostPackageRestore {
+        request: request.clone(),
+    };
+    let drain = |broker: &mut Broker| {
+        broker.dispatch(
+            HOST_LIFECYCLE_CONTROL_PRINCIPAL,
+            Command::HostPackageRestoreDrain {},
+        )
+    };
+    let state = |broker: &mut Broker| {
+        broker.dispatch(
+            "amaterasu.management",
+            Command::HostPackageActivationStatus {},
+        )
+    };
+    let mut broker = package_request_broker();
+
+    // A host shell from before restore requests never drains them, so the
+    // request is refused instead of holding the stream barrier closed.
+    assert_eq!(
+        error_code(broker.dispatch("amaterasu.management", restore())).as_deref(),
+        Some("restore_unavailable")
+    );
+    assert_eq!(
+        error_code(broker.dispatch("amaterasu.management", Command::HostPackageRestoreStatus {}))
+            .as_deref(),
+        Some("restore_unavailable")
+    );
+    assert!(matches!(
+        state(&mut broker),
+        Response::HostPackageActivationState {
+            pending: false,
+            started: false
+        }
+    ));
+
+    // Only the host control endpoint drains, and its first drain is what
+    // tells the broker the host takes restores.
+    assert!(
+        broker
+            .dispatch("amaterasu.management", Command::HostPackageRestoreDrain {})
+            .is_error()
+    );
+    assert_eq!(
+        error_code(broker.dispatch("amaterasu.management", restore())).as_deref(),
+        Some("restore_unavailable")
+    );
+    assert!(matches!(
+        drain(&mut broker),
+        Response::HostPackageRestore { request: None }
+    ));
+    assert!(matches!(
+        broker.dispatch("amaterasu.management", Command::HostPackageRestoreStatus {}),
+        Response::Ok
+    ));
+
+    // The same grant and caller rule as activation.
+    assert!(broker.dispatch("other", restore()).is_error());
+    assert!(
+        broker
+            .dispatch("other", Command::HostPackageRestoreStatus {})
+            .is_error()
+    );
+    for invalid in [
+        HostPackageRestore {
+            manifest_digest: "bad".into(),
+            ..request.clone()
+        },
+        HostPackageRestore {
+            expected_revision: "A".repeat(64),
+            ..request.clone()
+        },
+        // The running set is not something to restore to.
+        HostPackageRestore {
+            manifest_digest: request.expected_active.clone(),
+            ..request.clone()
+        },
+    ] {
+        assert_eq!(
+            error_code(broker.dispatch(
+                "amaterasu.management",
+                Command::HostPackageRestore { request: invalid }
+            ))
+            .as_deref(),
+            Some("invalid_request")
+        );
+    }
+
+    assert!(matches!(
+        broker.dispatch("amaterasu.management", restore()),
+        Response::Ok
+    ));
+    // One request at a time, whichever kind it is.
+    assert_eq!(
+        error_code(broker.dispatch("amaterasu.management", restore())).as_deref(),
+        Some("activation_in_progress")
+    );
+    assert_eq!(
+        error_code(broker.dispatch(
+            "amaterasu.management",
+            Command::HostPackageActivate {
+                request: HostPackageActivation {
+                    repository_id: "approved-repository".into(),
+                    catalog_digest: "1".repeat(64),
+                    manifest_digest: "5".repeat(64),
+                    expected_active: "3".repeat(64),
+                    expected_revision: "4".repeat(64),
+                },
+            }
+        ))
+        .as_deref(),
+        Some("activation_in_progress")
+    );
+    assert!(matches!(
+        state(&mut broker),
+        Response::HostPackageActivationState {
+            pending: true,
+            started: false
+        }
+    ));
+    // The barrier provider sees the request and holds it until streams end.
+    assert!(matches!(
+        broker.dispatch(
+            "example.stream-provider",
+            Command::HostPackageBarrierPending {}
+        ),
+        Response::HostPackageActivationState {
+            pending: true,
+            started: false
+        }
+    ));
+    assert!(matches!(
+        drain(&mut broker),
+        Response::HostPackageRestore { request: None }
+    ));
+    // An activation drain never hands a restore to a host expecting an update.
+    assert!(matches!(
+        broker.dispatch(
+            HOST_LIFECYCLE_CONTROL_PRINCIPAL,
+            Command::HostPackageActivationDrain {}
+        ),
+        Response::HostPackageActivation { request: None }
+    ));
+
+    // Withdrawn while waiting, the slot and the barrier are free again.
+    assert!(matches!(
+        broker.dispatch(
+            "amaterasu.management",
+            Command::HostPackageActivationCancel {}
+        ),
+        Response::Ok
+    ));
+    assert!(matches!(
+        state(&mut broker),
+        Response::HostPackageActivationState {
+            pending: false,
+            started: false
+        }
+    ));
+    assert!(matches!(
+        broker.dispatch("amaterasu.management", restore()),
+        Response::Ok
+    ));
+    assert!(
+        !broker
+            .dispatch(
+                "example.stream-provider",
+                Command::HostPackageBarrierReady { ready: true }
+            )
+            .is_error()
+    );
+    assert!(matches!(
+        broker.dispatch(
+            HOST_LIFECYCLE_CONTROL_PRINCIPAL,
+            Command::HostPackageActivationDrain {}
+        ),
+        Response::HostPackageActivation { request: None }
+    ));
+    assert!(
+        matches!(drain(&mut broker), Response::HostPackageRestore { request: Some(value) } if *value == request)
+    );
+    assert!(matches!(
+        state(&mut broker),
+        Response::HostPackageActivationState {
+            pending: false,
+            started: true
+        }
+    ));
+    // Once the host has taken it there is nothing to withdraw or replace.
+    assert_eq!(
+        error_code(broker.dispatch(
+            "amaterasu.management",
+            Command::HostPackageActivationCancel {}
+        ))
+        .as_deref(),
+        Some("activation_in_progress")
+    );
+    assert_eq!(
+        error_code(broker.dispatch("amaterasu.management", restore())).as_deref(),
+        Some("activation_in_progress")
+    );
+    assert!(matches!(
+        drain(&mut broker),
+        Response::HostPackageRestore { request: None }
+    ));
+}
+
+#[test]
+fn a_restore_drain_needs_the_host_package_capability() {
+    let mut config = RuntimeConfig {
+        host_lifecycle_control: true,
+        ..Default::default()
+    };
+    config
+        .principals
+        .insert(HOST_LIFECYCLE_CONTROL_PRINCIPAL.into(), Grants::default());
+    let mut broker = Broker::new(config).unwrap();
+    assert!(
+        broker
+            .dispatch(
+                HOST_LIFECYCLE_CONTROL_PRINCIPAL,
+                Command::HostPackageRestoreDrain {}
+            )
+            .is_error()
+    );
+}
+
+#[test]
+fn restore_commands_are_unknown_to_a_runtime_from_before_them() {
+    // The reply an older runtime gives a newer host: its command decoder
+    // rejects the unknown operation and the endpoint answers `invalid_request`.
+    // This pins the names the host probes with.
+    assert_eq!(
+        serde_json::to_value(Command::HostPackageRestoreDrain {}).unwrap(),
+        serde_json::json!({"op": "host_package_restore_drain"})
+    );
+    assert_eq!(
+        serde_json::to_value(Command::HostPackageRestoreStatus {}).unwrap(),
+        serde_json::json!({"op": "host_package_restore_status"})
+    );
+    assert_eq!(
+        serde_json::to_value(Response::HostPackageRestore { request: None }).unwrap(),
+        serde_json::json!({"kind": "host_package_restore", "request": null})
+    );
+}
+
 #[test]
 fn operation_api_consumers_remain_unchanged_when_the_provider_is_replaced() {
     use amaterasu_module_sdk::operation_api;
@@ -3722,4 +4027,124 @@ fn operation_api_consumers_remain_unchanged_when_the_provider_is_replaced() {
             );
         }
     }
+}
+
+#[test]
+fn alternate_plugin_installer_holds_fresh_stream_barriers_and_releases_admission() {
+    let provider = "org.example.alternate-installer";
+    let mut config = RuntimeConfig {
+        host_lifecycle_control: true,
+        host_package_activation_control: true,
+        ..Default::default()
+    };
+    config
+        .principals
+        .insert(HOST_LIFECYCLE_CONTROL_PRINCIPAL.into(), Grants::default());
+    config.principals.insert(
+        provider.into(),
+        Grants {
+            provide: names(&["nonary.plugin-installation/1"]),
+            call: names(&[
+                HOST_PACKAGE_ACTIVATION_SERVICE,
+                HOST_LIFECYCLE_SERVICE,
+                "nonary.plugin-installation/1",
+            ]),
+            ..Default::default()
+        },
+    );
+    config.principals.insert(
+        "outsider".into(),
+        Grants {
+            call: names(&[HOST_PACKAGE_ACTIVATION_SERVICE, HOST_LIFECYCLE_SERVICE]),
+            ..Default::default()
+        },
+    );
+    for principal in ["stream", "session"] {
+        config.principals.insert(
+            principal.into(),
+            Grants {
+                call: names(&[HOST_PACKAGE_BARRIER_SERVICE]),
+                ..Default::default()
+            },
+        );
+    }
+    config.api_methods.push(ApiMethodApproval {
+        provider: provider.into(),
+        callers: names(&[provider]),
+        method: ApiMethod {
+            service: "nonary.plugin-installation/1".into(),
+            method: "status".into(),
+            interface_major: 1,
+            interface_minor: 0,
+            request: ApiSchema {
+                required: Default::default(),
+                optional: Default::default(),
+                allow_extra: false,
+            },
+            response: ApiSchema {
+                required: Default::default(),
+                optional: Default::default(),
+                allow_extra: true,
+            },
+            privilege: ApiPrivilege::User,
+        },
+    });
+    let mut broker = Broker::new(config.clone()).unwrap();
+    assert_error_code(
+        broker.dispatch("outsider", Command::HostPluginSetup { hold: true }),
+        "permission_denied",
+    );
+    assert_error_code(
+        broker.dispatch(provider, Command::HostPluginSetup { hold: true }),
+        "activation_barrier_unavailable",
+    );
+    for principal in ["stream", "session"] {
+        assert!(matches!(
+            broker.dispatch(principal, Command::HostPackageBarrierRegister {}),
+            Response::Ok
+        ));
+    }
+    assert!(
+        matches!(broker.dispatch(provider,Command::HostPluginSetup{hold:true}),Response::Result{payload} if payload["held"]==true&&payload["ready"]==false)
+    );
+    assert_error_code(
+        broker.dispatch(
+            provider,
+            Command::HostLifecycle {
+                action: HostLifecycleAction::Restart,
+            },
+        ),
+        "plugin_barrier_not_ready",
+    );
+    assert!(matches!(
+        broker.dispatch("stream", Command::HostPackageBarrierReady { ready: true }),
+        Response::Ok
+    ));
+    assert!(
+        matches!(broker.dispatch(provider,Command::HostPluginSetupStatus{}),Response::Result{payload} if payload["ready"]==false)
+    );
+    assert!(matches!(
+        broker.dispatch("session", Command::HostPackageBarrierReady { ready: true }),
+        Response::Ok
+    ));
+    assert!(
+        matches!(broker.dispatch(provider,Command::HostPluginSetupStatus{}),Response::Result{payload} if payload["ready"]==true)
+    );
+    assert!(matches!(
+        broker.dispatch(
+            provider,
+            Command::HostLifecycle {
+                action: HostLifecycleAction::Restart
+            }
+        ),
+        Response::Ok
+    ));
+    assert!(
+        matches!(broker.dispatch(provider,Command::HostPluginSetup{hold:false}),Response::Result{payload} if payload["held"]==false)
+    );
+    config.host_context.plugin_setup_pending = true;
+    let mut recovered = Broker::new(config).unwrap();
+    assert!(
+        matches!(recovered.dispatch(provider,Command::HostPluginSetupStatus{}),Response::Result{payload} if payload["held"]==true&&payload["ready"]==false)
+    );
 }

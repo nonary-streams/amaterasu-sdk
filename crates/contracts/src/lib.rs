@@ -1,4 +1,5 @@
 //! Version 1 control-plane messages. These types are independent of the bootstrap ABI.
+pub mod api_validation;
 pub mod display_color_profile;
 pub mod encoder;
 pub mod media_profile;
@@ -58,6 +59,16 @@ pub enum HostLifecycleAction {
 pub struct HostPackageActivation {
     pub repository_id: String,
     pub catalog_digest: String,
+    pub manifest_digest: String,
+    pub expected_active: String,
+    pub expected_revision: String,
+}
+
+/// Identifies a retained set this host ran before, to be made active again.
+/// The host decides whether it may run; the request names nothing else.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostPackageRestore {
     pub manifest_digest: String,
     pub expected_active: String,
     pub expected_revision: String,
@@ -228,6 +239,17 @@ pub struct RuntimeHostContext {
     /// Only management may request it; persisted selection can differ.
     #[serde(default)]
     pub running_package_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub running_modules: Vec<RunningModuleIdentity>,
+    /// Original verified component declarations for management inventory.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub running_components: Vec<Value>,
+    /// Resume admission blocking before a recovered installer can receive work.
+    #[serde(default, skip_serializing_if = "bool_is_false")]
+    pub plugin_setup_pending: bool,
+}
+fn bool_is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -265,6 +287,11 @@ pub enum Command {
     HostLifecycle {
         action: HostLifecycleAction,
     },
+    /// Hold stream admission closed for the selected installation coordinator.
+    HostPluginSetup {
+        hold: bool,
+    },
+    HostPluginSetupStatus {},
     /// Request a host-verified package trial; only approved management may call.
     HostPackageActivate {
         request: HostPackageActivation,
@@ -272,6 +299,14 @@ pub enum Command {
     /// Observe or cancel a pending activation before the host starts it.
     HostPackageActivationStatus {},
     HostPackageActivationCancel {},
+    /// Request that the host make a retained, previously healthy set active
+    /// again; only approved management may call. It shares the activation
+    /// grant, barrier, status and cancellation with `HostPackageActivate`.
+    HostPackageRestore {
+        request: HostPackageRestore,
+    },
+    /// Succeeds once the host shell has shown that it takes restore requests.
+    HostPackageRestoreStatus {},
     /// The trusted barrier provider blocks new work and reports safe retirement.
     HostPackageBarrierRegister {},
     HostPackageBarrierPending {},
@@ -280,6 +315,9 @@ pub enum Command {
     },
     /// Reserved for the host control endpoint.
     HostPackageActivationDrain {},
+    /// Reserved for the host control endpoint. A host that sends this takes
+    /// restore requests; a runtime from before them answers `invalid_request`.
+    HostPackageRestoreDrain {},
     /// Emits one bounded product log record through the trusted host transport.
     Log {
         level: u8,
@@ -575,6 +613,10 @@ pub enum Response {
     /// Returned only to the reserved host control endpoint.
     HostPackageActivation {
         request: Option<Box<HostPackageActivation>>,
+    },
+    /// Returned only to the reserved host control endpoint.
+    HostPackageRestore {
+        request: Option<Box<HostPackageRestore>>,
     },
     /// Bounded activation and barrier status for authorized participants.
     HostPackageActivationState {

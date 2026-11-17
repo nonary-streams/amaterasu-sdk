@@ -4,6 +4,7 @@ fn negotiation() -> Negotiation {
     Negotiation::new(
         TrustedLaunch {
             epoch: 7,
+            operation: "test-launch".into(),
             rtsp_target: "rtspenc://127.0.0.1:48010/launch-1".into(),
             session_token: "opaque-session-1".into(),
             encrypted_rtsp: true,
@@ -239,7 +240,7 @@ fn primary_modern_order_requires_backend_acceptance_before_play_success() {
         machine.handle(7, &request(Method::Play, "/", 7, true)),
         Err(Error::Pending)
     );
-    machine.complete(7, ticket, true).unwrap();
+    machine.complete(7, ticket).unwrap();
     let Step::Action {
         ticket,
         action: Action::Play,
@@ -250,7 +251,7 @@ fn primary_modern_order_requires_backend_acceptance_before_play_success() {
         panic!()
     };
     assert_eq!(machine.state(), State::Play);
-    machine.complete(7, ticket, true).unwrap();
+    machine.complete(7, ticket).unwrap();
     assert_eq!(machine.state(), State::Playing);
 }
 
@@ -265,14 +266,11 @@ fn epoch_session_and_completion_tickets_cannot_adopt_another_launch() {
     let Step::Action { ticket, .. } = machine.handle(7, &announce()).unwrap() else {
         panic!()
     };
-    assert_eq!(machine.complete(8, ticket, true), Err(Error::WrongEpoch));
-    assert_eq!(
-        machine.complete(7, ticket + 1, true),
-        Err(Error::WrongTicket)
-    );
-    machine.complete(7, ticket, true).unwrap();
-    assert_eq!(machine.complete(7, ticket, true), Err(Error::WrongTicket));
-    assert_eq!(machine.handle(7, &announce()), Err(Error::InvalidSequence));
+    assert_eq!(machine.complete(8, ticket), Err(Error::WrongEpoch));
+    assert_eq!(machine.complete(7, ticket + 1), Err(Error::WrongTicket));
+    let reply = machine.complete(7, ticket).unwrap();
+    assert_eq!(machine.complete(7, ticket), Err(Error::WrongTicket));
+    assert_eq!(machine.handle(7, &announce()), Ok(Step::Reply(reply)));
 }
 
 #[test]
@@ -282,7 +280,8 @@ fn backend_rejection_never_emits_success_or_arms_play_but_allows_cleanup() {
     let Step::Action { ticket, .. } = machine.handle(7, &announce()).unwrap() else {
         panic!()
     };
-    let response = machine.complete(7, ticket, false).unwrap();
+    let permit = backend_failure(&machine, ticket);
+    let response = machine.reject(7, ticket, &permit).unwrap();
     assert!(response.starts_with(b"RTSP/1.0 503 "));
     assert_eq!(machine.state(), State::Failed);
     assert_eq!(
@@ -298,7 +297,7 @@ fn backend_rejection_never_emits_success_or_arms_play_but_allows_cleanup() {
     else {
         panic!()
     };
-    machine.complete(7, ticket, true).unwrap();
+    machine.complete(7, ticket).unwrap();
     assert_eq!(machine.state(), State::Closed);
     assert_eq!(
         machine.handle(7, &request(Method::Teardown, "/", 9, true)),
@@ -413,4 +412,162 @@ fn public_request_bounds_and_launch_metadata_are_validated() {
         Negotiation::new(launch, machine.capabilities),
         Err(Error::InvalidLaunch)
     ));
+}
+
+#[test]
+fn moonlight_generated_extension_announcement_completes_negotiation() {
+    let base = negotiation();
+    let mut capabilities = base.capabilities;
+    capabilities.max_width = 2560;
+    capabilities.max_height = 1440;
+    capabilities.max_fps = 120;
+    capabilities.max_bitrate_kbps = 100000;
+    capabilities.supported_colors = vec![sdp::ColorMode::Bt601Limited];
+    let profile =
+        serde_json::from_str(include_str!("../../../../../scripts/pyrowave/profile.json")).unwrap();
+    let snapshot = VideoProfileSnapshot {
+        profiles: vec![profile],
+    };
+    let mut machine =
+        Negotiation::with_video_profiles(base.launch, capabilities, snapshot.clone(), snapshot)
+            .unwrap();
+    setup_to_announce(&mut machine);
+    let mut announce = request(Method::Announce, "streamid=control/13/0", 6, true);
+    announce
+        .headers
+        .push(("content-type".into(), "application/sdp".into()));
+    announce.body = include_bytes!("../../sdp/fixtures/moonlight-pyrowave10.sdp").to_vec();
+    let parsed =
+        sdp::parse_profile_announce(&announce.body, machine.profile_offer.as_ref().unwrap());
+    assert!(
+        parsed.is_ok(),
+        "actual Moonlight generator announcement: {parsed:?}"
+    );
+    let Step::Action {
+        ticket,
+        action: Action::ExtensionAnnounce(_),
+    } = machine.handle(7, &announce).unwrap()
+    else {
+        panic!("extension ANNOUNCE action")
+    };
+    machine.complete(7, ticket).unwrap();
+    let play = request(Method::Play, "/", 7, true);
+    let Step::Action {
+        ticket,
+        action: Action::Play,
+    } = machine.handle(7, &play).unwrap()
+    else {
+        panic!("PLAY action")
+    };
+    machine.complete(7, ticket).unwrap();
+    assert_eq!(machine.state(), State::Playing);
+}
+
+#[test]
+fn extension_attribute_rules_bound_optional_hints_and_reject_unsupported_modes() {
+    let profile =
+        serde_json::from_str(include_str!("../../../../../scripts/pyrowave/profile.json")).unwrap();
+    let snapshot = VideoProfileSnapshot {
+        profiles: vec![profile],
+    };
+    let original = include_str!("../../sdp/fixtures/moonlight-pyrowave10.sdp");
+    for text in [
+        original.to_owned(),
+        original.replace("a=x-ss-video[0].pyrowaveLinkMbps:1000 \r\n", ""),
+        original.replace("a=x-ss-video[0].pyrowaveLinkMbps:1000", "a=x-ss-video[0].pyrowaveLinkMbps:2500"),
+        original.replace("t=0 0", "a=x-ss-video[0].pyrowavePaceMbps:850\r\na=x-ss-video[0].pyrowaveCompression:0\r\nt=0 0"),
+    ] {
+        assert!(sdp::parse_profile_announce(text.as_bytes(), &snapshot).is_ok());
+    }
+    for text in [
+        original.replace("pyrowaveAdaptiveFec:0", "pyrowaveAdaptiveFec:1"),
+        original.replace("pyrowaveAdaptiveBitrate:0", "pyrowaveAdaptiveBitrate:1"),
+        original.replace("pyrowaveFeatures:1", "pyrowaveFeatures:9"),
+        original.replace("t=0 0", "a=x-ss-video[0].pyrowaveCompression:1\r\nt=0 0"),
+        original.replace("t=0 0", "a=x-ss-video[0].unknownCodecMode:1\r\nt=0 0"),
+        original.replace("a=x-ss-video[0].pyrowaveFeatures:1 \r\n", ""),
+    ] {
+        assert!(
+            sdp::parse_profile_announce(text.as_bytes(), &snapshot).is_err(),
+            "{text}"
+        );
+    }
+    let mut ambiguous = snapshot;
+    let mut optional = ambiguous.profiles[0].wire_attributes[1].clone();
+    optional.phase =
+        amaterasu_contracts::media_profile::VideoProfileAttributePhase::AnnounceOptional;
+    ambiguous.profiles[0].wire_attributes.push(optional);
+    assert!(!ambiguous.validate());
+}
+
+#[test]
+fn negotiation_failure_criticality_is_explicit_and_reasons_are_stable() {
+    for error in [Error::InvalidSequence, Error::WrongState, Error::Pending] {
+        assert!(!error.is_critical(), "{error:?}");
+        assert!(!error.code().is_empty());
+    }
+    for error in [
+        Error::InvalidLaunch,
+        Error::WrongEpoch,
+        Error::WrongSession,
+        Error::InvalidTarget,
+        Error::InvalidHeaders,
+        Error::InvalidBody,
+        Error::UnsupportedTransport,
+        Error::UnsupportedMedia,
+        Error::WrongTicket,
+        Error::Serialization,
+    ] {
+        assert!(error.is_critical(), "{error:?}");
+        assert!(
+            error
+                .code()
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'_')
+        );
+    }
+}
+
+fn backend_failure(
+    machine: &Negotiation,
+    ticket: u64,
+) -> amaterasu_module_sdk::stream_lifecycle::StreamTermination {
+    use amaterasu_module_sdk::stream_lifecycle::{
+        LifecycleLayer, StreamFailureDecision, StreamFailureHandler, StreamIssue,
+    };
+    let failure = StreamIssue::critical(
+        "test-launch",
+        LifecycleLayer::Rtsp,
+        "arm",
+        "backend_unavailable",
+    );
+    let scope = machine.failure_scope(7, ticket).unwrap();
+    let StreamFailureDecision::Terminate(permit) =
+        StreamFailureHandler::decide_scoped(failure, scope)
+    else {
+        panic!("expected critical failure")
+    };
+    permit
+}
+
+#[test]
+fn a_termination_permit_cannot_reject_another_pending_operation() {
+    let mut first = negotiation();
+    let mut second = negotiation();
+    setup_to_announce(&mut first);
+    setup_to_announce(&mut second);
+    let Step::Action { ticket, .. } = first.handle(7, &announce()).unwrap() else {
+        panic!()
+    };
+    assert!(
+        matches!(second.handle(7, &announce()), Ok(Step::Action { ticket: other, .. }) if ticket == other)
+    );
+    let permit = backend_failure(&first, ticket);
+    assert_eq!(
+        second.reject(7, ticket, &permit),
+        Err(Error::InvalidFailureReport)
+    );
+    assert_eq!(second.state(), State::Announce);
+    assert!(first.reject(7, ticket, &permit).is_ok());
+    assert!(second.complete(7, ticket).is_ok());
 }

@@ -1,6 +1,6 @@
 # Amaterasu public SDK
 
-This source snapshot exports committed Amaterasu core `2d2779a26dc5bedf64c3805c759c8906e2714d07`.
+This source snapshot exports committed Amaterasu core `7edc4a3814046b3c6530f605cc16c60e2bc6a464`.
 `SDK_EXPORT.json` records the exact source revision, dependency closure, exclusions
 and file hashes. No uncommitted host or provider edits are included.
 

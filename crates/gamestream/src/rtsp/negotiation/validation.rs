@@ -21,10 +21,10 @@ pub(super) fn launch(launch: &TrustedLaunch, capabilities: &Capabilities) -> Res
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte))
         || [launch.audio_port, launch.video_port, launch.control_port].contains(&0)
-        || !(16..=3840).contains(&capabilities.max_width)
-        || !(16..=2160).contains(&capabilities.max_height)
-        || !(1..=120).contains(&capabilities.max_fps)
-        || !(100..=100000).contains(&capabilities.max_bitrate_kbps)
+        || !(16..=8192).contains(&capabilities.max_width)
+        || !(16..=8192).contains(&capabilities.max_height)
+        || !(1..=1000).contains(&capabilities.max_fps)
+        || !(100..=1_000_000).contains(&capabilities.max_bitrate_kbps)
         || capabilities.supported_colors.is_empty()
     {
         return Err(Error::InvalidLaunch);
@@ -131,6 +131,20 @@ pub(super) fn media(value: &sdp::Announce, capabilities: &Capabilities) -> Resul
             eprintln!("amaterasu rtsp announce capability rejection reason={error:?}");
             Error::UnsupportedMedia
         })?;
+    media_common(value, capabilities)
+}
+
+pub(super) fn media_extension(
+    value: &sdp::Announce<sdp::NegotiatedVideoFormat>,
+    capabilities: &Capabilities,
+) -> Result<(), Error> {
+    value
+        .check_common_support(&capabilities.transport)
+        .map_err(|_| Error::UnsupportedMedia)?;
+    media_common(value, capabilities)
+}
+
+fn media_common<T>(value: &sdp::Announce<T>, capabilities: &Capabilities) -> Result<(), Error> {
     if value.control != sdp::ControlProtocol::EncryptedEnet
         || !value.encryption.control_v2
         || !capabilities.supported_colors.contains(&value.video.color)
@@ -156,6 +170,17 @@ pub(super) fn media(value: &sdp::Announce, capabilities: &Capabilities) -> Resul
         eprintln!(
             "amaterasu rtsp announce color requested={:?} supported={:?}",
             value.video.color, capabilities.supported_colors
+        );
+        eprintln!(
+            "amaterasu rtsp announce limits requested_width={} max_width={} requested_height={} max_height={} requested_fps={} max_fps={} requested_bitrate_kbps={} max_bitrate_kbps={}",
+            value.video.width,
+            capabilities.max_width,
+            value.video.height,
+            capabilities.max_height,
+            value.video.fps,
+            capabilities.max_fps,
+            value.video.bitrate_kbps,
+            capabilities.max_bitrate_kbps,
         );
         return Err(Error::UnsupportedMedia);
     }

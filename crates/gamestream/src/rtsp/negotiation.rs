@@ -5,9 +5,14 @@ mod validation;
 
 use super::{Method, Request, serialize_response};
 use crate::sdp;
+use amaterasu_contracts::media_profile::VideoProfileSnapshot;
+use amaterasu_module_sdk::stream_lifecycle::{
+    StreamContinuation, StreamFailureScope, StreamTermination,
+};
 
 pub struct TrustedLaunch {
     pub epoch: u64,
+    pub operation: String,
     pub rtsp_target: String,
     pub session_token: String,
     pub encrypted_rtsp: bool,
@@ -41,6 +46,8 @@ pub struct Capabilities {
 pub enum Action {
     /// Backend must compare this against its actual prepared wire/capture config.
     Announce(sdp::Announce),
+    /// An extension has its own identity; no legacy codec is substituted.
+    ExtensionAnnounce(sdp::Announce<sdp::NegotiatedVideoFormat>),
     Play,
     Teardown,
 }
@@ -65,10 +72,52 @@ pub enum Error {
     WrongState,
     Pending,
     WrongTicket,
+    InvalidFailureReport,
     Serialization,
 }
 
 impl Error {
+    /// Whether this error prevents a correct, authorized stream from continuing.
+    /// Sequence, state and in-flight request refusals leave the negotiation and
+    /// prepared resources intact. Refuse the request, then allow a valid retry;
+    /// the RTSP status alone must not decide whether to retire the stream.
+    pub fn is_critical(self) -> bool {
+        match self {
+            Self::InvalidSequence | Self::WrongState | Self::Pending => false,
+            Self::InvalidLaunch
+            | Self::WrongEpoch
+            | Self::WrongSession
+            | Self::InvalidTarget
+            | Self::InvalidHeaders
+            | Self::InvalidBody
+            | Self::UnsupportedTransport
+            | Self::UnsupportedMedia
+            | Self::WrongTicket
+            | Self::InvalidFailureReport
+            | Self::Serialization => true,
+        }
+    }
+
+    /// Stable, bounded lifecycle reason; never includes peer input or secrets.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::InvalidLaunch => "invalid_launch",
+            Self::WrongEpoch => "wrong_epoch",
+            Self::WrongSession => "wrong_session",
+            Self::InvalidSequence => "invalid_sequence",
+            Self::InvalidTarget => "invalid_target",
+            Self::InvalidHeaders => "invalid_headers",
+            Self::InvalidBody => "invalid_body",
+            Self::UnsupportedTransport => "unsupported_transport",
+            Self::UnsupportedMedia => "unsupported_media",
+            Self::WrongState => "wrong_state",
+            Self::Pending => "pending",
+            Self::WrongTicket => "wrong_ticket",
+            Self::InvalidFailureReport => "invalid_failure_report",
+            Self::Serialization => "serialization",
+        }
+    }
+
     pub fn status(self) -> u16 {
         match self {
             Self::WrongEpoch => 403,
@@ -77,7 +126,10 @@ impl Error {
             Self::UnsupportedTransport => 461,
             Self::UnsupportedMedia => 406,
             Self::WrongState | Self::Pending => 455,
-            Self::InvalidLaunch | Self::WrongTicket | Self::Serialization => 500,
+            Self::InvalidLaunch
+            | Self::WrongTicket
+            | Self::InvalidFailureReport
+            | Self::Serialization => 500,
             _ => 400,
         }
     }
@@ -101,6 +153,8 @@ struct Pending {
     ticket: u64,
     cseq: u32,
     success: State,
+    failure_scope: StreamFailureScope,
+    retry: Option<Request>,
 }
 
 pub struct Negotiation {
@@ -108,7 +162,9 @@ pub struct Negotiation {
     capabilities: Capabilities,
     state: State,
     last_cseq: Option<u32>,
+    last_reply: Option<(Request, Vec<u8>)>,
     pending: Option<Pending>,
+    profile_offer: Option<VideoProfileSnapshot>,
 }
 
 impl Negotiation {
@@ -119,8 +175,26 @@ impl Negotiation {
             capabilities,
             state: State::Options,
             last_cseq: None,
+            last_reply: None,
             pending: None,
+            profile_offer: None,
         })
+    }
+
+    /// Build an extension-aware negotiation from an immutable provider snapshot
+    /// and independently supplied trusted downstream support. Neither is peer input.
+    pub fn with_video_profiles(
+        launch: TrustedLaunch,
+        capabilities: Capabilities,
+        offered: VideoProfileSnapshot,
+        downstream: VideoProfileSnapshot,
+    ) -> Result<Self, Error> {
+        if !offered.supported_by(&downstream) {
+            return Err(Error::UnsupportedMedia);
+        }
+        let mut negotiation = Self::new(launch, capabilities)?;
+        negotiation.profile_offer = Some(offered);
+        Ok(negotiation)
     }
 
     pub fn state(&self) -> State {
@@ -137,6 +211,13 @@ impl Negotiation {
         if self.pending.is_some() {
             return Err(Error::Pending);
         }
+        if let Some((previous, reply)) = &self.last_reply
+            && request == previous
+        {
+            // The transport authenticated this new envelope. A byte-equivalent
+            // parsed request can receive its previous reply without replaying an effect.
+            return Ok(Step::Reply(reply.clone()));
+        }
         if self
             .last_cseq
             .is_some_and(|previous| request.cseq <= previous)
@@ -147,36 +228,109 @@ impl Negotiation {
         self.validate_session(request)?;
         let (step, next) = self.transition(request)?;
         self.last_cseq = Some(request.cseq);
-        if let Step::Action { ticket, .. } = &step {
-            self.pending = Some(Pending {
-                ticket: *ticket,
-                cseq: request.cseq,
-                success: next,
-            });
-        } else {
-            self.state = next;
+        self.last_reply = None;
+        match &step {
+            Step::Action { ticket, action } => {
+                self.pending = Some(Pending {
+                    ticket: *ticket,
+                    cseq: request.cseq,
+                    success: next,
+                    failure_scope: StreamFailureScope::new(self.launch.operation.clone()),
+                    retry: matches!(action, Action::Announce(_) | Action::ExtensionAnnounce(_))
+                        .then(|| request.clone()),
+                });
+            }
+            Step::Reply(reply) => {
+                self.state = next;
+                self.last_reply = Some((request.clone(), reply.clone()));
+            }
         }
         Ok(step)
     }
 
-    /// Only acknowledge success after the backend has committed its operation.
-    /// Failure is terminal except that TEARDOWN remains available for cleanup.
-    pub fn complete(&mut self, epoch: u64, ticket: u64, success: bool) -> Result<Vec<u8>, Error> {
+    /// Acknowledge only an operation the backend has committed successfully.
+    /// Failure completion is a separate API requiring the shared handler's
+    /// capability; a bool cannot authorize a terminal wire response.
+    ///
+    /// ```compile_fail
+    /// # use amaterasu_gamestream::rtsp::negotiation::Negotiation;
+    /// fn unchecked_failure(machine: &mut Negotiation) {
+    ///     machine.complete(7, 1, false);
+    /// }
+    /// ```
+    pub fn complete(&mut self, epoch: u64, ticket: u64) -> Result<Vec<u8>, Error> {
+        let (response, next) = self.completion(epoch, ticket, 200)?;
+        self.state = next;
+        self.last_reply = self
+            .pending
+            .take()
+            .and_then(|pending| pending.retry)
+            .map(|request| (request, response.clone()));
+        Ok(response)
+    }
+
+    /// Failure decisions must bind to the exact pending action that owns them.
+    pub fn failure_scope(&self, epoch: u64, ticket: u64) -> Result<&StreamFailureScope, Error> {
+        Ok(&self.pending_action(epoch, ticket)?.failure_scope)
+    }
+
+    /// Only the central failure decision can authorize terminal rejection.
+    ///
+    /// ```compile_fail
+    /// # use amaterasu_gamestream::rtsp::negotiation::Negotiation;
+    /// # use amaterasu_module_sdk::stream_lifecycle::{StreamIssue, LifecycleLayer};
+    /// fn warning_cannot_reject(machine: &mut Negotiation) {
+    ///     let warning = StreamIssue::advisory("stream", LifecycleLayer::Rtsp, "announce", "hint");
+    ///     machine.reject(7, 1, &warning);
+    /// }
+    /// ```
+    pub fn reject(
+        &mut self,
+        epoch: u64,
+        ticket: u64,
+        permit: &StreamTermination,
+    ) -> Result<Vec<u8>, Error> {
+        if !permit.matches_scope(self.failure_scope(epoch, ticket)?) {
+            return Err(Error::InvalidFailureReport);
+        }
+        let (response, _) = self.completion(epoch, ticket, 503)?;
+        self.state = State::Failed;
+        self.pending = None;
+        Ok(response)
+    }
+
+    /// Refuse only a read-only/recovered operation after the common handler
+    /// approves continuation. This does not put the negotiation in Failed.
+    pub fn refuse(
+        &mut self,
+        epoch: u64,
+        ticket: u64,
+        continuation: &StreamContinuation,
+    ) -> Result<Vec<u8>, Error> {
+        if !continuation.matches_scope(self.failure_scope(epoch, ticket)?) {
+            return Err(Error::InvalidFailureReport);
+        }
+        let (response, _) = self.completion(epoch, ticket, 455)?;
+        self.pending = None;
+        Ok(response)
+    }
+
+    fn pending_action(&self, epoch: u64, ticket: u64) -> Result<&Pending, Error> {
         if epoch != self.launch.epoch {
             return Err(Error::WrongEpoch);
         }
-        let pending = self.pending.as_ref().ok_or(Error::WrongTicket)?;
-        if pending.ticket != ticket {
-            return Err(Error::WrongTicket);
-        }
-        let response = self.response(if success { 200 } else { 503 }, pending.cseq, &[], &[])?;
-        self.state = if success {
-            pending.success
-        } else {
-            State::Failed
-        };
-        self.pending = None;
-        Ok(response)
+        self.pending
+            .as_ref()
+            .filter(|pending| pending.ticket == ticket)
+            .ok_or(Error::WrongTicket)
+    }
+
+    fn completion(&self, epoch: u64, ticket: u64, status: u16) -> Result<(Vec<u8>, State), Error> {
+        let pending = self.pending_action(epoch, ticket)?;
+        Ok((
+            self.response(status, pending.cseq, &[], &[])?,
+            pending.success,
+        ))
     }
 
     fn validate_session(&self, request: &Request) -> Result<(), Error> {
@@ -221,7 +375,33 @@ impl Negotiation {
                 if request.header("accept") != Some("application/sdp") {
                     return Err(Error::InvalidHeaders);
                 }
-                let body = validation::description(&self.capabilities);
+                let mut body = validation::description(&self.capabilities);
+                if let Some(offer) = &self.profile_offer {
+                    let insertion = body.find("m=audio ").ok_or(Error::Serialization)?;
+                    let mut marker_lines = Vec::new();
+                    for profile in &offer.profiles {
+                        let rtpmap = format!(
+                            "a=rtpmap:{} {}/90000\r\n",
+                            profile.payload_type, profile.encoding_name
+                        );
+                        if !marker_lines.contains(&rtpmap) {
+                            marker_lines.push(rtpmap);
+                        }
+                        for attribute in profile.wire_attributes.iter().filter(|attribute| {
+                            attribute.phase
+                                == amaterasu_contracts::media_profile::VideoProfileAttributePhase::Describe
+                        }) {
+                            if let Some(value) = &attribute.value {
+                                let line = format!("a={}:{}\r\n", attribute.name, value);
+                                if !marker_lines.contains(&line) {
+                                    marker_lines.push(line);
+                                }
+                            }
+                        }
+                    }
+                    let markers = marker_lines.concat();
+                    body.insert_str(insertion, &markers);
+                }
                 let reply = self.response(
                     200,
                     request.cseq,
@@ -262,8 +442,27 @@ impl Negotiation {
                 if request.header("content-type") != Some("application/sdp") {
                     return Err(Error::InvalidHeaders);
                 }
+                if let Some(offer) = &self.profile_offer {
+                    let selected = sdp::parse_profile_announce(&request.body, offer)
+                        .map_err(|error| {
+                            let settings = sdp::rejection_context(&request.body);
+                            eprintln!("amaterasu rtsp extension announce parse rejection reason={error:?} numeric_settings={settings:?}");
+                            Error::UnsupportedMedia
+                        })?;
+                    if matches!(
+                        selected.video.format,
+                        sdp::NegotiatedVideoFormat::Extension(_)
+                    ) {
+                        validation::media_extension(&selected, &self.capabilities)?;
+                        return Ok((
+                            action(request, Action::ExtensionAnnounce(selected)),
+                            State::Play,
+                        ));
+                    }
+                }
                 let announce = sdp::parse_announce(&request.body).map_err(|error| {
-                    eprintln!("amaterasu rtsp announce parse rejection reason={error:?}");
+                    let settings = sdp::rejection_context(&request.body);
+                    eprintln!("amaterasu rtsp announce parse rejection reason={error:?} numeric_settings={settings:?}");
                     Error::UnsupportedMedia
                 })?;
                 validation::media(&announce, &self.capabilities)?;
