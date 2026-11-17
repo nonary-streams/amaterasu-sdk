@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "core_source_commit": "b8dc1d6c024f890974f09e8a819b740e92841964",
-  "sdk_parent_commit": "fdcf1d84af451bd73852bf82c19b88d7c74097b6",
+  "core_source_commit": "4d8f6bf22972b86485929b20bcfed0eecf325ddf",
+  "sdk_parent_commit": "f05aa030d65cb846ebe4406695119911a322f9b7",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Exact committed source snapshot; source publication does not qualify signed packages, native hardware or client playback.",
   "seed_crates": [
@@ -571,7 +571,7 @@
     },
     {
       "path": "crates/gamestream/src/rtsp/negotiation.rs",
-      "sha256": "fd53fe9ffee6a41f3070e67d5442a39f403934a19ccbca0027163d4bab596af3"
+      "sha256": "b17b22e2a9ca554917a55f9aed003fdeab1e82df16d90cbe2fffd1a9e21eae4c"
     },
     {
       "path": "crates/gamestream/src/rtsp/negotiation/README.md",
@@ -579,7 +579,7 @@
     },
     {
       "path": "crates/gamestream/src/rtsp/negotiation/tests.rs",
-      "sha256": "9dc21c19f4bf2adc1a83b6828a9c0f4a23311b1b3fa051c15a28bb2eb03206aa"
+      "sha256": "23235248b28714385010f90c3185c808a3ddf9fe34dad4562fb6e16580ffa292"
     },
     {
       "path": "crates/gamestream/src/rtsp/negotiation/validation.rs",
@@ -1439,7 +1439,7 @@
     },
     {
       "path": "crates/module-sdk/src/stream_lifecycle.rs",
-      "sha256": "89666aafdb0e5fc27bec7cd687cb8a940539dd005c52ab835e2dcf97915dbfc6"
+      "sha256": "11c4ed029c6329182760cef9e98ab908f43028a64003b8f39ccb7209ddd4f506"
     },
     {
       "path": "crates/module-sdk/src/stream_lifecycle/feed.rs",
@@ -1451,7 +1451,7 @@
     },
     {
       "path": "crates/module-sdk/src/stream_lifecycle/termination.rs",
-      "sha256": "2619db74e7237043edb3da4bfe5c857be8a98b9750ffa73eb2ac3a0cb4db2dea"
+      "sha256": "5ada4739e278bba9ee10d49fb5951a6c49fd9cbd46ef13bf3dccd85a8d9a61c2"
     },
     {
       "path": "crates/module-sdk/src/stream_lifecycle/tests.rs",
@@ -2176,13 +2176,13 @@
     {
       "path": "modules/catalog/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "b8dc1d6c024f890974f09e8a819b740e92841964",
+      "source_commit": "4d8f6bf22972b86485929b20bcfed0eecf325ddf",
       "sha256": "6373a5dea9d97f6f152708d3bbdaf3b77befcecae605ebb48a31a6f3700bf189"
     },
     {
       "path": "modules/nvhttp/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "b8dc1d6c024f890974f09e8a819b740e92841964",
+      "source_commit": "4d8f6bf22972b86485929b20bcfed0eecf325ddf",
       "sha256": "a79dc63198d0a8e59307800d99a815c9cc593228008b354aedaa7e25f9b5c86e"
     },
     {
@@ -2194,7 +2194,7 @@
     {
       "path": "scripts/pyrowave/profile.json",
       "source_repository": "core",
-      "source_commit": "b8dc1d6c024f890974f09e8a819b740e92841964",
+      "source_commit": "4d8f6bf22972b86485929b20bcfed0eecf325ddf",
       "sha256": "07aca821026efbebc611e773677135c1f81bed5c98a57cf40357883d5c2083f9"
     }
   ],
