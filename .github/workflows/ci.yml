@@ -30,8 +30,8 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
-      - run: cargo test --workspace --locked
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked --features amaterasu-module-sdk/network-http,amaterasu-module-sdk/network-test-support
+      - run: cargo clippy --workspace --all-targets --locked --features amaterasu-module-sdk/network-http,amaterasu-module-sdk/network-test-support -- -D warnings
       - name: C header layout
         if: runner.os != 'Windows'
         run: |
