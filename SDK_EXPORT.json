@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "core_source_commit": "ddf4d87754ee57f012718a3ca7d6175859fc4d9f",
-  "sdk_parent_commit": "9eada482dfb9d86893e01894eb3fb7c0c09d20d9",
+  "core_source_commit": "76ec66803553b00afb30ec0c1730aad1dfe4b605",
+  "sdk_parent_commit": "795545d5f6430ffa7de70e721c13c2267800b1ca",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Exact committed source snapshot; source publication does not qualify signed packages, native hardware or client playback.",
   "seed_crates": [
@@ -1835,7 +1835,7 @@
     },
     {
       "path": "crates/runtime/src/tests.rs",
-      "sha256": "3aad06585103f6f63f29b0bda47b96a3a375439aea53a415286a33657185afd5"
+      "sha256": "d8d0391847bf084d65772947f850e868c6f2dcead16acf331324daea826ecbd6"
     },
     {
       "path": "crates/runtime/src/tick_holds.rs",
@@ -2176,13 +2176,13 @@
     {
       "path": "modules/catalog/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "ddf4d87754ee57f012718a3ca7d6175859fc4d9f",
+      "source_commit": "76ec66803553b00afb30ec0c1730aad1dfe4b605",
       "sha256": "6373a5dea9d97f6f152708d3bbdaf3b77befcecae605ebb48a31a6f3700bf189"
     },
     {
       "path": "modules/nvhttp/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "ddf4d87754ee57f012718a3ca7d6175859fc4d9f",
+      "source_commit": "76ec66803553b00afb30ec0c1730aad1dfe4b605",
       "sha256": "a79dc63198d0a8e59307800d99a815c9cc593228008b354aedaa7e25f9b5c86e"
     },
     {
@@ -2194,7 +2194,7 @@
     {
       "path": "scripts/pyrowave/profile.json",
       "source_repository": "core",
-      "source_commit": "ddf4d87754ee57f012718a3ca7d6175859fc4d9f",
+      "source_commit": "76ec66803553b00afb30ec0c1730aad1dfe4b605",
       "sha256": "07aca821026efbebc611e773677135c1f81bed5c98a57cf40357883d5c2083f9"
     }
   ],
