@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "core_source_commit": "4d8f6bf22972b86485929b20bcfed0eecf325ddf",
-  "sdk_parent_commit": "f05aa030d65cb846ebe4406695119911a322f9b7",
+  "core_source_commit": "ddf4d87754ee57f012718a3ca7d6175859fc4d9f",
+  "sdk_parent_commit": "9eada482dfb9d86893e01894eb3fb7c0c09d20d9",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Exact committed source snapshot; source publication does not qualify signed packages, native hardware or client playback.",
   "seed_crates": [
@@ -307,7 +307,7 @@
     },
     {
       "path": "crates/contracts/src/lib.rs",
-      "sha256": "b8f8eca8ec12737b1f0dd8ab0b11704daa0ae25689a91aae6e82dfc1f0e83168"
+      "sha256": "dc347e61d538b74a2a44f9603740209668944aed5c5f0881f96ecff2f68f5043"
     },
     {
       "path": "crates/contracts/src/media_profile.rs",
@@ -407,7 +407,7 @@
     },
     {
       "path": "crates/gamestream/src/control/README.md",
-      "sha256": "b545ffed31ad353a7bbca7f876ae25fd1e5bca9598107358292d142944954ed2"
+      "sha256": "1d66a5c64638b1e22dc4a532178f5137202368192148da33738dce53a2fe5553"
     },
     {
       "path": "crates/gamestream/src/control/feedback.rs",
@@ -435,7 +435,7 @@
     },
     {
       "path": "crates/gamestream/src/control/translate.rs",
-      "sha256": "315efb385bd96827adfb861f48b9aaeee67b81b333efabd128ad4a664fe07c4f"
+      "sha256": "f1b63fc307ff6097890ede645267a79e7668ced1cbd38d404ec6495aa247ece6"
     },
     {
       "path": "crates/gamestream/src/control/vectors.txt",
@@ -615,7 +615,7 @@
     },
     {
       "path": "crates/gamestream/src/sdp/mod.rs",
-      "sha256": "8a4241e5983fc5abe4431f2c8755b8dd42960d685ae2e7d47c7a7aeca21bf076"
+      "sha256": "791dee933d59f648ca888beab97c410a28dd7a14e7894824cb95300d2f037097"
     },
     {
       "path": "crates/gamestream/src/sdp/negotiate.rs",
@@ -843,7 +843,7 @@
     },
     {
       "path": "crates/media/src/frame_resource.rs",
-      "sha256": "6080b614e91abe19243ca46d9e8937c2a2d7c718982a2756c0c8240391716633"
+      "sha256": "6d930ddae451e8f085073bf903bf4f6c55e96c75efa08ec58da9d3282f534a2c"
     },
     {
       "path": "crates/media/src/geometry.rs",
@@ -1635,7 +1635,7 @@
     },
     {
       "path": "crates/network-sockets/src/resolver/process/unix.rs",
-      "sha256": "6dbcda13b165bd962db3a3fe087ab013f8fb4a1daaa90b6b1bb7a1871f466c5e"
+      "sha256": "793e4eb4bbf5719947fe6b86dc21a0756a5723c738b769033dfd3b3cc7ab3f48"
     },
     {
       "path": "crates/network-sockets/src/resolver/process/unix/fifo.rs",
@@ -1719,7 +1719,7 @@
     },
     {
       "path": "crates/runtime/src/broker/mod.rs",
-      "sha256": "f6240507db4c92f5dd3be9ef91e2dbb76590db3a2027e83ec921d61d57958ff8"
+      "sha256": "b10dd7abea8f37487b94d49a786c7db77ecfba5fc9af70c91cd951954e849ac9"
     },
     {
       "path": "crates/runtime/src/broker/requests.rs",
@@ -1739,7 +1739,7 @@
     },
     {
       "path": "crates/runtime/src/ffi.rs",
-      "sha256": "886076835543cb72864fe1c448ba794b0f5c80b4b82bb084c75fb856078c9c6c"
+      "sha256": "6e36c1bbbc920707f52f2099903748ac04f1b1109c5d6b4b5581e2edb126add8"
     },
     {
       "path": "crates/runtime/src/ffi/tests.rs",
@@ -1747,7 +1747,7 @@
     },
     {
       "path": "crates/runtime/src/ffi/tests/direct_and_trace.rs",
-      "sha256": "c1d9ad8cecbf625334e2bd28555c44ee58cc27964532f3bcb3505cf708651ab8"
+      "sha256": "5a9e98d31f7e2b1243b444089047e0899daa05caa0d265a12cdd43c2db42b9bf"
     },
     {
       "path": "crates/runtime/src/ffi/tests/display_plugin_smoke.rs",
@@ -1835,7 +1835,7 @@
     },
     {
       "path": "crates/runtime/src/tests.rs",
-      "sha256": "86c0e37d683ed76e6534c8f52ea22c2285095e46b8b85cc776604059b204a9c1"
+      "sha256": "3aad06585103f6f63f29b0bda47b96a3a375439aea53a415286a33657185afd5"
     },
     {
       "path": "crates/runtime/src/tick_holds.rs",
@@ -1847,7 +1847,7 @@
     },
     {
       "path": "crates/runtime/src/trace/hub.rs",
-      "sha256": "8a4b672554c695eca940cc6194b93fca96cfd6fe8c3a10d431eb3a1eb8862349"
+      "sha256": "59ae748c135aae2ebc195e7ce40a5335c6669be95f861fdc1d44cddd844e4796"
     },
     {
       "path": "crates/runtime/src/trace/mod.rs",
@@ -1859,7 +1859,7 @@
     },
     {
       "path": "crates/runtime/src/trace/report.rs",
-      "sha256": "9ec1f3d2b97165b0f81fb3c4086ea4e8b03e6dca56e6b394f479b70870f2766c"
+      "sha256": "bbbc964531f1640e01424a5ba85a7039503d540dabdfa7a690d2773b3761e0d7"
     },
     {
       "path": "crates/runtime/src/trace/ring.rs",
@@ -1871,7 +1871,7 @@
     },
     {
       "path": "crates/runtime/src/trace/tests.rs",
-      "sha256": "cc081f4751aa64468988c6251d7129518a72be4c05e1969533cb273a9cab0ce3"
+      "sha256": "152476432bf02cea890ea2b58939eb54980e8a1e0d6547bd735fd93b219c0d2f"
     },
     {
       "path": "crates/runtime/src/work_signal.rs",
@@ -1975,7 +1975,7 @@
     },
     {
       "path": "docs/flow-tracing.md",
-      "sha256": "2a9239d512c55ddef60933a0a405b9519f67e4274adf90f825ca2395eb97436c"
+      "sha256": "8e6a38cb05e4ae56ae49ef439cbc1a11ea5a947073bb673ebdfdaa88c1aeef9b"
     },
     {
       "path": "docs/gpu-processing-sdk.md",
@@ -2031,7 +2031,7 @@
     },
     {
       "path": "docs/web-extension-ui-dialog.md",
-      "sha256": "455aa7608c0e726a3b7f3fda2c14d43441b05a1a26f5d7198249988eddcfc8af"
+      "sha256": "c986987dbe67154e691190e6efa5ee8a90d4e00754f7cdd670980685bba424b4"
     },
     {
       "path": "docs/web-extension-ui-feedback.md",
@@ -2039,7 +2039,7 @@
     },
     {
       "path": "docs/web-extension-ui-sdk.md",
-      "sha256": "e616cc614f9fcafe37c68743237c51df5e625ef1b5468d3d8ead57e625aba971"
+      "sha256": "477d82aabf00941a15da97bdc372f4a5571995454cfcaf6b294aede720665495"
     },
     {
       "path": "sdk/LOGGING.md",
@@ -2155,7 +2155,7 @@
     },
     {
       "path": "sdk/web/amaterasu-ui.d.ts",
-      "sha256": "de07977991013c316c89500f2c02f733381f87a78b3663bec7ca4b95938fa403"
+      "sha256": "dbc35f797f10910965b78660b9839700272b9b926c1faf7e9b17b2802f5a2c50"
     }
   ],
   "generated_files": [
@@ -2176,25 +2176,25 @@
     {
       "path": "modules/catalog/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "4d8f6bf22972b86485929b20bcfed0eecf325ddf",
+      "source_commit": "ddf4d87754ee57f012718a3ca7d6175859fc4d9f",
       "sha256": "6373a5dea9d97f6f152708d3bbdaf3b77befcecae605ebb48a31a6f3700bf189"
     },
     {
       "path": "modules/nvhttp/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "4d8f6bf22972b86485929b20bcfed0eecf325ddf",
+      "source_commit": "ddf4d87754ee57f012718a3ca7d6175859fc4d9f",
       "sha256": "a79dc63198d0a8e59307800d99a815c9cc593228008b354aedaa7e25f9b5c86e"
     },
     {
       "path": "modules/stats/metadata/api.json",
       "source_repository": "stats",
-      "source_commit": "c0d7a99528dd98865d735aeb84ef77f5c7a1b2cf",
+      "source_commit": "aad4d6cbb2076d06bbd670751313e6d7f58b8b12",
       "sha256": "ca59f49ab5e7fc1756920f2928ae152f960f73e599ebe290dcb930628b1de9df"
     },
     {
       "path": "scripts/pyrowave/profile.json",
       "source_repository": "core",
-      "source_commit": "4d8f6bf22972b86485929b20bcfed0eecf325ddf",
+      "source_commit": "ddf4d87754ee57f012718a3ca7d6175859fc4d9f",
       "sha256": "07aca821026efbebc611e773677135c1f81bed5c98a57cf40357883d5c2083f9"
     }
   ],
