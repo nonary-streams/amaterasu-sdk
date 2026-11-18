@@ -22,11 +22,11 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-abi"
-version = "0.1.0"
+version = "0.1.2"
 
 [[package]]
 name = "amaterasu-configuration-schema"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-contracts"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-extension-api",
  "serde",
@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-data-plane"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-abi",
  "serde",
@@ -51,7 +51,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-extension-api"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-configuration-schema",
  "serde",
@@ -61,7 +61,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-gamestream"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "aes",
  "amaterasu-abi",
@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-input-companion"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-storage",
  "libc",
@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-input-policy"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -96,7 +96,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-media"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-abi",
  "libc",
@@ -107,7 +107,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-module-sdk"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-abi",
  "amaterasu-contracts",
@@ -131,7 +131,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-module-testkit"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-contracts",
  "amaterasu-module-sdk",
@@ -141,14 +141,14 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-network-api"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-abi",
 ]
 
 [[package]]
 name = "amaterasu-network-sockets"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-abi",
  "amaterasu-network-api",
@@ -160,7 +160,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-process-api"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-abi",
  "serde",
@@ -169,7 +169,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-rtx-runtime"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-abi",
  "amaterasu-module-sdk",
@@ -184,7 +184,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-runtime"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-abi",
  "amaterasu-contracts",
@@ -197,7 +197,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-storage"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-timing-metrics",
  "getrandom 0.3.4",
@@ -207,7 +207,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-timing-metrics"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "libc",
  "serde",
@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "amaterasu-windows-capture-geometry"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "amaterasu-media",
  "windows",

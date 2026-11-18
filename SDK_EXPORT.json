@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "core_source_commit": "76ec66803553b00afb30ec0c1730aad1dfe4b605",
-  "sdk_parent_commit": "795545d5f6430ffa7de70e721c13c2267800b1ca",
+  "core_source_commit": "fdac8b2684e30edbb09e4f6e513417bbec26c0aa",
+  "sdk_parent_commit": "d8d015c9da0976a067e6636943ef53f85fa2ed4d",
   "sdk_repository": "https://github.com/nonary-streams/amaterasu-sdk",
   "scope": "Exact committed source snapshot; source publication does not qualify signed packages, native hardware or client playback.",
   "seed_crates": [
@@ -739,7 +739,7 @@
     },
     {
       "path": "crates/input-companion/src/windows_service.rs",
-      "sha256": "b27fc9c7c358b2c58b92d0fba5abd507fbb5f68f94dd9c8b584cfb1f3b264060"
+      "sha256": "dee5130523b3c3760e20a2404bfe8dda9ffe45b30bfedb4386105e950eefa80b"
     },
     {
       "path": "crates/input-companion/src/windows_vhf.rs",
@@ -1635,7 +1635,7 @@
     },
     {
       "path": "crates/network-sockets/src/resolver/process/unix.rs",
-      "sha256": "793e4eb4bbf5719947fe6b86dc21a0756a5723c738b769033dfd3b3cc7ab3f48"
+      "sha256": "30171e1a338ec315ecddc1e08fcbbebe254caeb6802ea7b20b28375a61159f4b"
     },
     {
       "path": "crates/network-sockets/src/resolver/process/unix/fifo.rs",
@@ -2176,13 +2176,13 @@
     {
       "path": "modules/catalog/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "76ec66803553b00afb30ec0c1730aad1dfe4b605",
+      "source_commit": "fdac8b2684e30edbb09e4f6e513417bbec26c0aa",
       "sha256": "6373a5dea9d97f6f152708d3bbdaf3b77befcecae605ebb48a31a6f3700bf189"
     },
     {
       "path": "modules/nvhttp/metadata/api.json",
       "source_repository": "core",
-      "source_commit": "76ec66803553b00afb30ec0c1730aad1dfe4b605",
+      "source_commit": "fdac8b2684e30edbb09e4f6e513417bbec26c0aa",
       "sha256": "a79dc63198d0a8e59307800d99a815c9cc593228008b354aedaa7e25f9b5c86e"
     },
     {
@@ -2194,7 +2194,7 @@
     {
       "path": "scripts/pyrowave/profile.json",
       "source_repository": "core",
-      "source_commit": "76ec66803553b00afb30ec0c1730aad1dfe4b605",
+      "source_commit": "fdac8b2684e30edbb09e4f6e513417bbec26c0aa",
       "sha256": "07aca821026efbebc611e773677135c1f81bed5c98a57cf40357883d5c2083f9"
     }
   ],
